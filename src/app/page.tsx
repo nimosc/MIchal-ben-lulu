@@ -1,101 +1,165 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useStore } from "@/store/useStore";
+import { calcProjectTotals } from "@/lib/project";
+import { Input } from "@/components/ui/input";
+import { Trash2, FolderOpen, Plus, Layers, Lightbulb, ArrowLeft } from "lucide-react";
+
+export default function HomePage() {
+  const router = useRouter();
+  const { projects, addProject, deleteProject } = useStore();
+  const [newName, setNewName] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const handleAdd = () => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    addProject(trimmed);
+    setNewName("");
+    setAdding(false);
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="min-h-[calc(100vh-56px)]">
+      {/* Hero */}
+      <div className="bg-gradient-to-bl from-slate-900 via-slate-800 to-slate-900 text-white px-6 py-14">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center gap-2 text-amber-400 text-sm font-medium mb-4">
+            <Lightbulb className="w-4 h-4" />
+            <span>מערכת ניהול מפרטים</span>
+          </div>
+          <h1 className="text-4xl font-bold mb-3 tracking-tight">פרויקטי תאורה</h1>
+          <p className="text-slate-400 text-base max-w-md">
+            ניהול מפרטי גופי תאורה לפרויקטי עיצוב פנים — מסעיף ועד שליחה אוטומטית
+          </p>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          <div className="mt-8 flex items-center gap-3">
+            {adding ? (
+              <div className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-xl px-3 py-2 backdrop-blur-sm">
+                <Input
+                  placeholder="שם הפרויקט..."
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleAdd();
+                    if (e.key === "Escape") { setAdding(false); setNewName(""); }
+                  }}
+                  autoFocus
+                  className="bg-transparent border-0 text-white placeholder:text-slate-400 focus-visible:ring-0 w-56 p-0 h-auto"
+                />
+                <button
+                  onClick={handleAdd}
+                  disabled={!newName.trim()}
+                  className="bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  צור
+                </button>
+                <button
+                  onClick={() => { setAdding(false); setNewName(""); }}
+                  className="text-slate-400 hover:text-white text-sm px-2 py-1.5 transition-colors"
+                >
+                  ביטול
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setAdding(true)}
+                className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors shadow-lg shadow-amber-900/30"
+              >
+                <Plus className="w-4 h-4" />
+                פרויקט חדש
+              </button>
+            )}
+            <span className="text-slate-500 text-sm">{projects.length} פרויקטים</span>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+
+      {/* Projects Grid */}
+      <div className="max-w-6xl mx-auto px-6 py-10">
+        {projects.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center mb-4">
+              <FolderOpen className="w-8 h-8 text-amber-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground mb-1">אין פרויקטים עדיין</h3>
+            <p className="text-muted-foreground text-sm max-w-xs">
+              לחץ על &quot;פרויקט חדש&quot; כדי להתחיל לנהל את מפרטי התאורה שלך
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {projects.map((project) => {
+              const totals = calcProjectTotals(project);
+
+              return (
+                <div
+                  key={project.id}
+                  className="group bg-card border border-border rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:border-amber-200 transition-all cursor-pointer"
+                  onClick={() => router.push(`/project/${project.id}`)}
+                >
+                  {/* Color bar */}
+                  <div className="h-1.5 bg-gradient-to-l from-amber-400 to-amber-500" />
+
+                  <div className="p-5">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1 min-w-0">
+                        <h2 className="font-bold text-foreground text-lg leading-tight truncate group-hover:text-amber-600 transition-colors">
+                          {project.name}
+                        </h2>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {totals.floorCount} קומות · {totals.itemCount} גופי תאורה
+                        </p>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`למחוק את "${project.name}"?`)) deleteProject(project.id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-all p-1 rounded-lg hover:bg-red-50 mr-1"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Stats */}
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="bg-secondary rounded-xl p-3">
+                        <p className="text-xs text-muted-foreground mb-0.5">יחידות</p>
+                        <p className="text-xl font-bold text-foreground">{totals.totalUnits}</p>
+                      </div>
+                      <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                        <p className="text-xs text-amber-600 mb-0.5">סה״כ מחיר</p>
+                        <p className="text-xl font-bold text-amber-700">₪{totals.totalPrice.toLocaleString()}</p>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => router.push(`/project/${project.id}/setup`)}
+                        className="flex-1 text-xs font-medium text-muted-foreground border border-border rounded-lg px-3 py-2 hover:bg-secondary hover:text-foreground transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        הגדרות
+                      </button>
+                      <button
+                        onClick={() => router.push(`/project/${project.id}`)}
+                        className="flex-1 text-xs font-medium bg-slate-800 text-white rounded-lg px-3 py-2 hover:bg-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                        פתח פרויקט
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
