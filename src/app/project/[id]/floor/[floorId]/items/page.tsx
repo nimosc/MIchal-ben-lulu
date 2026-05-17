@@ -4,18 +4,22 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/store/useStore";
 import { calcFloorTotals, calcItemTotals, getFloor } from "@/lib/project";
+import { exportFloorToExcel } from "@/lib/exportFloorExcel";
 import { Progress } from "@/components/ui/progress";
 import {
   ChevronRight,
+  ChevronDown,
   Plus,
   Pencil,
   Trash2,
   Send,
+  FileDown,
   Settings,
   Zap,
   Package,
   DollarSign,
   Layers,
+  Wrench,
 } from "lucide-react";
 
 export default function FloorItemsPage() {
@@ -23,13 +27,23 @@ export default function FloorItemsPage() {
   const router = useRouter();
   const projectId = params.id as string;
   const floorId = params.floorId as string;
-  const { projects, deleteItem } = useStore();
+  const { projects, deleteItem, deleteAccessory } = useStore();
   const project = projects.find((p) => p.id === projectId);
   const floor = project ? getFloor(project, floorId) : undefined;
 
+  const [exporting, setExporting] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState(0);
   const [sendStatus, setSendStatus] = useState("");
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (itemId: string) => {
+    setExpandedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+      return next;
+    });
+  };
 
   if (!project || !floor) {
     return (
@@ -42,6 +56,17 @@ export default function FloorItemsPage() {
   const floorTotals = calcFloorTotals(floor);
   const { totalUnits, totalPrice, totalWatt } = floorTotals;
   const items = floor.items;
+
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      await exportFloorToExcel(project, floor);
+    } catch {
+      alert("שגיאה בייצוא לאקסל");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleSendAll = async () => {
     if (!project.webhook_url) {
@@ -143,6 +168,14 @@ export default function FloorItemsPage() {
                 <Plus className="w-4 h-4" />
                 הוסף גוף תאורה
               </button>
+              <button
+                onClick={handleExportExcel}
+                disabled={exporting}
+                className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground border border-border rounded-lg px-3 py-2 hover:bg-secondary hover:text-foreground disabled:opacity-60 transition-colors"
+              >
+                <FileDown className="w-4 h-4" />
+                {exporting ? "מייצא..." : "ייצוא לאקסל"}
+              </button>
               {items.length > 0 && (
                 <button
                   onClick={handleSendAll}
@@ -239,7 +272,10 @@ export default function FloorItemsPage() {
                 <tbody className="divide-y divide-border">
                   {items.map((item, idx) => {
                     const { totalUnits, totalPriceExVat, totalWatt } = calcItemTotals(item);
+                    const accessories = item.accessories ?? [];
+                    const isExpanded = expandedItems.has(item.id);
                     return (
+                      <>
                       <tr
                         key={item.id}
                         className={`hover:bg-secondary/40 transition-colors ${idx % 2 !== 0 ? "bg-secondary/20" : ""}`}
@@ -304,6 +340,19 @@ export default function FloorItemsPage() {
                         <td className="px-4 py-3.5">
                           <div className="flex gap-1 justify-end">
                             <button
+                              onClick={() => toggleExpand(item.id)}
+                              title="אביזרים"
+                              className={`p-1.5 rounded-lg transition-colors ${accessories.length > 0 ? "text-amber-500 hover:bg-amber-50" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}
+                            >
+                              <div className="flex items-center gap-0.5">
+                                <Wrench className="w-3.5 h-3.5" />
+                                {accessories.length > 0 && (
+                                  <span className="text-[10px] font-bold">{accessories.length}</span>
+                                )}
+                                <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                              </div>
+                            </button>
+                            <button
                               onClick={() => router.push(`/project/${projectId}/floor/${floorId}/item?edit=${item.id}`)}
                               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                             >
@@ -318,6 +367,82 @@ export default function FloorItemsPage() {
                           </div>
                         </td>
                       </tr>
+                      {isExpanded && (
+                        <tr key={`${item.id}-accessories`}>
+                          <td colSpan={10} className="px-0 py-0 bg-amber-50/40">
+                            <div className="px-6 py-3 border-t border-amber-100 space-y-1">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-semibold text-amber-700 flex items-center gap-1.5">
+                                  <Wrench className="w-3.5 h-3.5" />
+                                  אביזרים לגוף {item.mark}
+                                </span>
+                                <button
+                                  onClick={() => router.push(`/project/${projectId}/floor/${floorId}/item/${item.id}/accessory`)}
+                                  className="flex items-center gap-1 text-xs font-semibold text-amber-600 hover:text-amber-700 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-lg transition-colors"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  הוסף אביזר
+                                </button>
+                              </div>
+                              {accessories.length === 0 ? (
+                                <p className="text-xs text-muted-foreground py-2">אין אביזרים עדיין</p>
+                              ) : (
+                                <div className="space-y-1">
+                                  {accessories.map((acc) => {
+                                    const accUnits = acc.rooms.reduce((s, r) => s + r.qty, 0);
+                                    const accPrice = accUnits * acc.price_per_unit;
+                                    const accLabel = acc.scraped?.product_name || acc.body_description || "אביזר";
+                                    return (
+                                      <div key={acc.id} className="flex items-center gap-3 bg-white border border-amber-100 rounded-xl px-3 py-2.5">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-medium text-foreground truncate">{accLabel}</p>
+                                          {acc.scraped?.manufacturer && (
+                                            <p className="text-xs text-muted-foreground">{acc.scraped.manufacturer}</p>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
+                                          {accUnits > 0 && (
+                                            <span className="flex items-center gap-0.5">
+                                              <Package className="w-3 h-3" />{accUnits} {acc.unit_type}
+                                            </span>
+                                          )}
+                                          {accPrice > 0 && (
+                                            <span className="font-semibold text-amber-600">₪{accPrice.toLocaleString()}</span>
+                                          )}
+                                          {acc.product_url && (
+                                            <a href={acc.product_url} target="_blank" rel="noopener noreferrer"
+                                              className="text-muted-foreground hover:text-foreground transition-colors"
+                                              title="פתח קישור">
+                                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                              </svg>
+                                            </a>
+                                          )}
+                                        </div>
+                                        <div className="flex gap-1 shrink-0">
+                                          <button
+                                            onClick={() => router.push(`/project/${projectId}/floor/${floorId}/item/${item.id}/accessory?edit=${acc.id}`)}
+                                            className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                                          >
+                                            <Pencil className="w-3 h-3" />
+                                          </button>
+                                          <button
+                                            onClick={() => { if (confirm("למחוק אביזר זה?")) deleteAccessory(projectId, floorId, item.id, acc.id); }}
+                                            className="p-1 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </>
                     );
                   })}
                 </tbody>

@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, Suspense, useEffect, useCallback, type ReactNode } from "react";
+import { useState, Suspense, useEffect, useCallback, useMemo, type ReactNode } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/utils";
-import { LightingItem, ProductVariant, ScrapedData } from "@/types";
+import { HistoryPickerPanel } from "@/components/HistoryPickerPanel";
+import { filterItemHistory, lightingItemToTemplate } from "@/lib/itemHistory";
+import { LightingItem, ProductVariant, SavedLightingTemplate, ScrapedData } from "@/types";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +35,7 @@ import {
   Maximize2,
   Bolt,
   Building2,
+  History,
   Layers,
 } from "lucide-react";
 
@@ -247,7 +250,8 @@ function ItemFormContent() {
   const floorId = params.floorId as string;
   const editId = searchParams.get("edit");
 
-  const { projects, addItem, updateItem } = useStore();
+  const { projects, addItem, updateItem, itemHistory, saveItemTemplate, removeItemTemplate } =
+    useStore();
   const project = projects.find((p) => p.id === projectId);
   const floor = project?.floors.find((f) => f.id === floorId);
   const editItem = editId ? floor?.items.find((i) => i.id === editId) : undefined;
@@ -282,6 +286,13 @@ function ItemFormContent() {
   const [scrapeLoading, setScrapeLoading] = useState(false);
   const [scrapeError, setScrapeError] = useState("");
   const [pendingVariants, setPendingVariants] = useState<{ base: ScrapedData; variants: ProductVariant[] } | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(!editId);
+  const [historySearch, setHistorySearch] = useState("");
+
+  const filteredHistory = useMemo(
+    () => filterItemHistory(itemHistory, historySearch),
+    [itemHistory, historySearch]
+  );
 
   const hasScrapedData = !!(
     scraped.product_name || scraped.manufacturer || scraped.product_description
@@ -366,6 +377,27 @@ function ItemFormContent() {
     setPendingVariants(null);
   };
 
+  const applyTemplate = (t: SavedLightingTemplate) => {
+    setProductUrl(t.product_url);
+    setDriverLocation(t.driver_location);
+    setDimmingMethod(t.dimming_method);
+    setUnitType(t.unit_type);
+    setPricePerUnit(t.price_per_unit);
+    const base = t.scraped ?? emptyScraped();
+    const withDesc =
+      !base.product_description && t.body_description
+        ? { ...base, product_description: t.body_description }
+        : base;
+    const selected = resolveSelectedImages(withDesc);
+    setScraped({
+      ...withDesc,
+      selected_image_urls: selected,
+      main_image_url: selected[0] ?? withDesc.main_image_url,
+    });
+    setScrapeError("");
+    setHistoryOpen(false);
+  };
+
   const handleSubmit = () => {
     const itemRooms = Object.entries(roomSelections)
       .filter(([, qty]) => qty > 0)
@@ -377,7 +409,9 @@ function ItemFormContent() {
       unit_type: unitType,
       price_per_unit: pricePerUnit, rooms: itemRooms, scraped,
       scraped_status: scraped.product_name ? "done" : "pending",
+      accessories: editItem?.accessories ?? [],
     };
+    saveItemTemplate(lightingItemToTemplate(itemData));
     if (editItem) updateItem(projectId, floorId, editItem.id, itemData);
     else addItem(projectId, floorId, { ...itemData, id: crypto.randomUUID() });
     router.push(`/project/${projectId}/floor/${floorId}/items`);
@@ -519,6 +553,40 @@ function ItemFormContent() {
 
           {/* ─── MAIN FORM ─── */}
           <div className="space-y-7">
+
+            {itemHistory.length > 0 && (
+              <div className="bg-card border border-border rounded-2xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setHistoryOpen((o) => !o)}
+                  className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-secondary/40 transition-colors"
+                >
+                  <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <History className="w-4 h-4 text-amber-500" />
+                    בחר מגוף קודם
+                    <span className="text-xs font-normal text-muted-foreground">
+                      ({itemHistory.length})
+                    </span>
+                  </span>
+                  <ChevronRight
+                    className={cn(
+                      "w-4 h-4 text-muted-foreground transition-transform",
+                      historyOpen && "rotate-90"
+                    )}
+                  />
+                </button>
+                {historyOpen && (
+                  <HistoryPickerPanel
+                    itemHistory={itemHistory}
+                    filteredHistory={filteredHistory}
+                    historySearch={historySearch}
+                    onSearchChange={setHistorySearch}
+                    onApply={applyTemplate}
+                    onRemove={removeItemTemplate}
+                  />
+                )}
+              </div>
+            )}
 
             {/* Identity row */}
             <div className="grid grid-cols-[1fr_130px] gap-4">
@@ -730,7 +798,7 @@ function ItemFormContent() {
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={imgUrl} alt="" className="w-full h-full object-contain p-0.5 pointer-events-none"
-                                  onError={(e) => { (e.target as HTMLElement).parentElement!.style.display = "none"; }} />
+                                  onError={(e) => { const p = (e.target as HTMLElement).parentElement; if (p) p.style.display = "none"; }} />
                               </button>
                               <button
                                 type="button"

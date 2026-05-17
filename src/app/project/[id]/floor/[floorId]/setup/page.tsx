@@ -146,6 +146,7 @@ export default function SetupPage() {
       setLocalRooms((prev) => {
         const oldIndex = prev.findIndex((r) => r.id === active.id);
         const newIndex = prev.findIndex((r) => r.id === over.id);
+        if (oldIndex === -1 || newIndex === -1) return prev;
         return arrayMove(prev, oldIndex, newIndex).map((r, i) => ({ ...r, order: i }));
       });
     }

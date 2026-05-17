@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "node scripts/next-guard.mjs dev",
+    "dev:reset": "node scripts/kill-port.mjs 3000 && node scripts/clean-next.mjs && node scripts/next-guard.mjs dev",
+    "build": "node scripts/next-guard.mjs build",
+    "postbuild": "node scripts/postbuild-hint.mjs",
+    "start": "node scripts/next-guard.mjs start",
+    "next": "node scripts/next-guard.mjs",
     "lint": "next lint"
   },
   "dependencies": {
@@ -16,6 +19,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "exceljs": "^4.4.0",
     "lucide-react": "^1.14.0",
     "next": "14.2.35",
     "next-themes": "^0.4.6",

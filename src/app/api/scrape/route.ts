@@ -73,7 +73,6 @@ ${pageText}`,
 }
 
 export async function POST(req: NextRequest) {
-  const runId = "post-fix-v2";
   try {
     const { url } = await req.json();
     if (!url) {
@@ -114,45 +113,10 @@ export async function POST(req: NextRequest) {
 
     const parsed = await extractWithTool(text);
 
-    // #region agent log
-    fetch("http://127.0.0.1:7926/ingest/3ff673b4-b6d5-46fa-ab1b-8d699dbec3dd", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "6ced52" },
-      body: JSON.stringify({
-        sessionId: "6ced52",
-        runId,
-        hypothesisId: "H1",
-        location: "scrape/route.ts:success",
-        message: "scrape tool_use success",
-        data: {
-          hasProductName: !!parsed.product_name,
-          variantCount: Array.isArray(parsed.variants) ? parsed.variants.length : 0,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     return NextResponse.json({ ...parsed, image_urls: imageUrls.slice(0, 20) });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown error";
     console.error("scrape error", err);
-
-    // #region agent log
-    fetch("http://127.0.0.1:7926/ingest/3ff673b4-b6d5-46fa-ab1b-8d699dbec3dd", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "6ced52" },
-      body: JSON.stringify({
-        sessionId: "6ced52",
-        runId,
-        hypothesisId: "H1",
-        location: "scrape/route.ts:error",
-        message: "scrape failed",
-        data: { error: message },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
 
     return NextResponse.json({ error: message }, { status: 500 });
   }

@@ -1,7 +1,16 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createFloor, migrateProject } from "@/lib/project";
-import { Floor, LightingItem, Project, Room, ScrapedData } from "@/types";
+import { lightingItemToTemplate, upsertItemHistory } from "@/lib/itemHistory";
+import {
+  Accessory,
+  Floor,
+  LightingItem,
+  Project,
+  Room,
+  SavedLightingTemplate,
+  ScrapedData,
+} from "@/types";
 
 function touchProject(p: Project): Project {
   return { ...p, updated_at: new Date().toISOString() };
@@ -23,9 +32,23 @@ function mapFloor(
       ];
 }
 
+function mapItem(
+  project: Project,
+  projectId: string,
+  floorId: string,
+  itemId: string,
+  updater: (item: LightingItem) => LightingItem
+): Project[] {
+  return mapFloor(project, projectId, floorId, (f) => ({
+    ...f,
+    items: f.items.map((i) => (i.id === itemId ? updater(i) : i)),
+  }));
+}
+
 interface StoreState {
   projects: Project[];
   presetRooms: string[];
+  itemHistory: SavedLightingTemplate[];
   addProject: (name: string) => void;
   deleteProject: (id: string) => void;
   updateProject: (id: string, data: Partial<Project>) => void;
@@ -44,12 +67,18 @@ interface StoreState {
     status: LightingItem["scraped_status"]
   ) => void;
   setPresetRooms: (rooms: string[]) => void;
+  addAccessory: (projectId: string, floorId: string, itemId: string, accessory: Accessory) => void;
+  updateAccessory: (projectId: string, floorId: string, itemId: string, accessoryId: string, data: Partial<Accessory>) => void;
+  deleteAccessory: (projectId: string, floorId: string, itemId: string, accessoryId: string) => void;
+  saveItemTemplate: (data: Omit<SavedLightingTemplate, "id" | "saved_at">) => void;
+  removeItemTemplate: (id: string) => void;
 }
 
 export const useStore = create<StoreState>()(
   persist(
     (set) => ({
       projects: [],
+      itemHistory: [],
       presetRooms: [
         "מטבח",
         "סלון",
@@ -194,19 +223,84 @@ export const useStore = create<StoreState>()(
             }))
           ),
         })),
+
+      addAccessory: (projectId, floorId, itemId, accessory) =>
+        set((state) => ({
+          projects: state.projects.flatMap((p) =>
+            mapItem(p, projectId, floorId, itemId, (i) => ({
+              ...i,
+              accessories: [...(i.accessories ?? []), accessory],
+            }))
+          ),
+        })),
+
+      updateAccessory: (projectId, floorId, itemId, accessoryId, data) =>
+        set((state) => ({
+          projects: state.projects.flatMap((p) =>
+            mapItem(p, projectId, floorId, itemId, (i) => ({
+              ...i,
+              accessories: (i.accessories ?? []).map((a) =>
+                a.id === accessoryId ? { ...a, ...data } : a
+              ),
+            }))
+          ),
+        })),
+
+      deleteAccessory: (projectId, floorId, itemId, accessoryId) =>
+        set((state) => ({
+          projects: state.projects.flatMap((p) =>
+            mapItem(p, projectId, floorId, itemId, (i) => ({
+              ...i,
+              accessories: (i.accessories ?? []).filter((a) => a.id !== accessoryId),
+            }))
+          ),
+        })),
+
+      saveItemTemplate: (data) =>
+        set((state) => ({
+          itemHistory: upsertItemHistory(state.itemHistory, data),
+        })),
+
+      removeItemTemplate: (id) =>
+        set((state) => ({
+          itemHistory: state.itemHistory.filter((h) => h.id !== id),
+        })),
     }),
     {
       name: "lighting-store",
-      version: 2,
+      version: 4,
       migrate: (persisted, version) => {
-        const state = persisted as { projects?: Record<string, unknown>[]; presetRooms?: string[] };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const state = persisted as any;
         if (version < 2 && state.projects) {
-          return {
-            ...state,
-            projects: state.projects.map((p) => migrateProject(p)),
-          };
+          state.projects = state.projects.map((p: Record<string, unknown>) => migrateProject(p));
         }
-        return persisted;
+        if (version < 3 && state.projects) {
+          state.projects = state.projects.map((p: Record<string, unknown>) => ({
+            ...p,
+            floors: ((p.floors as Record<string, unknown>[] | undefined) ?? []).map((f) => ({
+              ...f,
+              items: ((f.items as Record<string, unknown>[] | undefined) ?? []).map((i) => ({
+                ...i,
+                accessories: (i.accessories as unknown[] | undefined) ?? [],
+              })),
+            })),
+          }));
+        }
+        if (version < 4) {
+          let history = (state.itemHistory as SavedLightingTemplate[] | undefined) ?? [];
+          if (state.projects) {
+            for (const p of state.projects as Project[]) {
+              for (const f of p.floors ?? []) {
+                for (const item of f.items ?? []) {
+                  history = upsertItemHistory(history, lightingItemToTemplate(item));
+                }
+              }
+            }
+          }
+          state.itemHistory = history;
+        }
+        return state;
       },
     }
   )

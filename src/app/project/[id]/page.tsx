@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/store/useStore";
 import { calcFloorTotals, calcProjectTotals } from "@/lib/project";
+import { exportProjectToExcel } from "@/lib/exportFloorExcel";
 import { Input } from "@/components/ui/input";
 import {
   ChevronRight,
@@ -12,6 +13,7 @@ import {
   Building2,
   Layers,
   Settings,
+  FileDown,
   ArrowLeft,
 } from "lucide-react";
 
@@ -26,6 +28,7 @@ export default function ProjectFloorsPage() {
 
   const [newFloorName, setNewFloorName] = useState("");
   const [adding, setAdding] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   if (!project) {
     return (
@@ -36,6 +39,17 @@ export default function ProjectFloorsPage() {
   }
 
   const totals = calcProjectTotals(project);
+
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      await exportProjectToExcel(project);
+    } catch {
+      alert("שגיאה בייצוא לאקסל");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleAddFloor = () => {
     const name = newFloorName.trim();
@@ -69,13 +83,23 @@ export default function ProjectFloorsPage() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => router.push(`/project/${projectId}/setup`)}
-              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground border border-border rounded-lg px-3 py-2 hover:bg-secondary hover:text-foreground transition-colors"
-            >
-              <Settings className="w-4 h-4" />
-              הגדרות פרויקט
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={handleExportExcel}
+                disabled={exporting}
+                className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground border border-border rounded-lg px-3 py-2 hover:bg-secondary hover:text-foreground disabled:opacity-60 transition-colors"
+              >
+                <FileDown className="w-4 h-4" />
+                {exporting ? "מייצא..." : "ייצוא לאקסל"}
+              </button>
+              <button
+                onClick={() => router.push(`/project/${projectId}/setup`)}
+                className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground border border-border rounded-lg px-3 py-2 hover:bg-secondary hover:text-foreground transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+                הגדרות פרויקט
+              </button>
+            </div>
           </div>
         </div>
       </div>

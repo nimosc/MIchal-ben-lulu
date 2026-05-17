@@ -159,8 +159,9 @@ export default function SettingsPage() {
     const { active, over } = event;
     if (over && active.id !== over.id) {
       setRooms((prev) => {
-        const oldIndex = prev.findIndex((_, i) => `${i}` === active.id);
-        const newIndex = prev.findIndex((_, i) => `${i}` === over.id);
+        const oldIndex = prev.findIndex((_, i) => `${i}` === String(active.id));
+        const newIndex = prev.findIndex((_, i) => `${i}` === String(over.id));
+        if (oldIndex === -1 || newIndex === -1) return prev;
         return arrayMove(prev, oldIndex, newIndex);
       });
     }

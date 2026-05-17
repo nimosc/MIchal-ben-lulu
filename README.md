@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lighting App
 
-## Getting Started
+Next.js 14 app for lighting project management.
 
-First, run the development server:
+## פיתוח מקומי
 
 ```bash
+cd lighting-app
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+פתח [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## `.next` — למה נשברים 404/500 ואיך למנוע
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Next שומר **תיקייה אחת** (`.next`) ל-dev ול-production. אם מערבבים את שני המצבים (למשל `build` בזמן ש-`dev` רץ על פורט 3000), השרת מחפש קבצים שלא קיימים → שגיאות על `layout.css`, `main-app.js`, `page.js` וכו'.
 
-## Learn More
+### פקודות נכונות
 
-To learn more about Next.js, take a look at the following resources:
+| מטרה | פקודה |
+|------|--------|
+| פיתוח יומיומי | `npm run dev` |
+| אחרי build / שגיאות static | `npm run dev:reset` |
+| build לפרודקשן | עצור dev → `npm run build` → `npm run start` |
+| Next עם הגנות (במקום `npx next`) | `npm run next -- build` / `npm run next -- dev` |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### אל תעשה
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `npm run build` כש-`npm run dev` רץ על 3000 (הסקריפט **יחסום** — זה מכוון)
+- `npx next build` / `npx next dev` — **עוקף** את ההגנות; השתמש ב-`npm run …`
+- שני טרמינלים עם `dev` במקביל
 
-## Deploy on Vercel
+### סקריפטי הגנה (אוטומטיים)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `scripts/next-guard.mjs` — בודק פורט 3000 לפני `build`, מנקה `.next` ישן לפני `dev`
+- `scripts/ensure-dev-next.mjs` — מוחק שאריות production לפני dev
+- `npm run dev:reset` — הורג 3000, מוחק `.next`, מפעיל dev נקי
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deploy
+
+```bash
+npm run build
+npm run start
+```
+
+או deploy ל-Netlify/Vercel לפי הגדרות הפרויקט.

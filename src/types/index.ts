@@ -37,6 +37,30 @@ export interface ScrapedData {
   variants?: ProductVariant[] | null;
 }
 
+export interface Accessory {
+  id: string;
+  product_url: string;
+  body_description: string;
+  unit_type: "יח'" | "מטר";
+  price_per_unit: number;
+  rooms: ItemRoom[];
+  scraped: ScrapedData | null;
+  scraped_status: "pending" | "loading" | "done" | "error";
+}
+
+/** Reusable lighting body spec (no mark, rooms, or accessories). */
+export interface SavedLightingTemplate {
+  id: string;
+  saved_at: string;
+  product_url: string;
+  driver_location: string;
+  dimming_method: string;
+  body_description: string;
+  unit_type: "יח'" | "מטר";
+  price_per_unit: number;
+  scraped: ScrapedData | null;
+}
+
 export interface LightingItem {
   id: string;
   section_id: number;
@@ -50,6 +74,7 @@ export interface LightingItem {
   rooms: ItemRoom[];
   scraped: ScrapedData | null;
   scraped_status: "pending" | "loading" | "done" | "error";
+  accessories: Accessory[];
 }
 
 export interface Floor {
