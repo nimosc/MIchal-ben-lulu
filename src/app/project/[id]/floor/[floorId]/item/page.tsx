@@ -5,7 +5,16 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/utils";
 import { HistoryPickerPanel } from "@/components/HistoryPickerPanel";
+import { ProductDocumentLinks } from "@/components/ProductDocumentLinks";
 import { filterItemHistory, lightingItemToTemplate } from "@/lib/itemHistory";
+import { CatalogSpecEditor } from "@/components/CatalogSpecEditor";
+import { CATALOG_IMPORTERS } from "@/lib/catalogImporters";
+import { CATALOG_MARKS, DEFAULT_CATALOG_MARK } from "@/lib/catalogMarks";
+import {
+  formatLumens,
+  mergeVariantIntoScraped,
+  normalizeScraped,
+} from "@/lib/scrapedData";
 import { LightingItem, ProductVariant, SavedLightingTemplate, ScrapedData } from "@/types";
 import {
   Dialog,
@@ -37,19 +46,30 @@ import {
   Building2,
   History,
   Layers,
+  Link2,
+  Plus,
 } from "lucide-react";
 
-const MARKS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-const DIMMING_METHODS = ["DIM-DALI", "DIM 0-10V", "TRIAC", "PWM", "ללא", "אחר"];
-const DRIVER_LOCATIONS = ["מרוחק", "אינטגרלי", "מקומי"];
-
-const emptyScraped = (): ScrapedData => ({
-  product_name: null, manufacturer: null, model: null,
-  color_temp_k: null, cri: null, watt_per_unit: null,
-  voltage: null, current: null, max_ceiling_height_cm: null,
-  main_image_url: null, product_description: null,
-  selected_image_urls: [],
-});
+const CONTROL_METHODS = [
+  "ON/OFF",
+  "Phase Cut",
+  "TRIAC",
+  "0-10V",
+  "DALI",
+  "DALI2",
+  "Push DIM",
+  "Casambi",
+  "DMX",
+  "KNX",
+  "Wireless",
+  "Bluetooth Mesh",
+  "ללא עמעום",
+];
+const AUX_EQUIPMENT_LOCATIONS = [
+  "דרייבר/ספק כח אינטגרלי",
+  "דרייבר/ספק כח מקומי",
+  "דרייבר/ספק כח מרוחק",
+];
 
 function resolveSelectedImages(scraped: ScrapedData): string[] {
   if (scraped.selected_image_urls?.length) return scraped.selected_image_urls;
@@ -86,6 +106,27 @@ function toggleSelectedImage(scraped: ScrapedData, url: string): ScrapedData {
     selected_image_urls: next,
     main_image_url: next[0] ?? null,
   };
+}
+
+function galleryImageUrls(scraped: ScrapedData): string[] {
+  const urls = scraped.image_urls ?? [];
+  if (urls.length > 0) return urls;
+  if (scraped.main_image_url) return [scraped.main_image_url];
+  return [];
+}
+
+function addGalleryImageUrl(scraped: ScrapedData, rawUrl: string): ScrapedData | "invalid" | "duplicate" {
+  const url = rawUrl.trim();
+  if (!url) return "invalid";
+  try {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) return "invalid";
+  } catch {
+    return "invalid";
+  }
+  const existing = galleryImageUrls(scraped);
+  if (existing.includes(url)) return "duplicate";
+  return { ...scraped, image_urls: [...existing, url] };
 }
 
 function ImageLightbox({
@@ -257,10 +298,15 @@ function ItemFormContent() {
   const editItem = editId ? floor?.items.find((i) => i.id === editId) : undefined;
 
   const [sectionId, setSectionId] = useState(editItem?.section_id ?? 1);
-  const [mark, setMark] = useState(editItem?.mark ?? "A");
+  const [mark, setMark] = useState(
+    () => editItem?.mark ?? DEFAULT_CATALOG_MARK
+  );
   const [productUrl, setProductUrl] = useState(editItem?.product_url ?? "");
-  const [driverLocation, setDriverLocation] = useState(editItem?.driver_location ?? "מרוחק");
-  const [dimmingMethod, setDimmingMethod] = useState(editItem?.dimming_method ?? "ללא");
+  const [driverLocation, setDriverLocation] = useState(
+    editItem?.driver_location ?? "דרייבר/ספק כח מרוחק",
+  );
+  const [dimmingMethod, setDimmingMethod] = useState(editItem?.dimming_method ?? "ללא עמעום");
+  const [importer, setImporter] = useState(editItem?.importer ?? "");
   const [unitType, setUnitType] = useState<"יח'" | "מטר">(editItem?.unit_type ?? "יח'");
   const [pricePerUnit, setPricePerUnit] = useState(editItem?.price_per_unit ?? 0);
   const [roomSelections, setRoomSelections] = useState<Record<string, number>>(() => {
@@ -269,7 +315,7 @@ function ItemFormContent() {
     return m;
   });
   const [scraped, setScraped] = useState<ScrapedData>(() => {
-    const base = editItem?.scraped ?? emptyScraped();
+    const base = normalizeScraped(editItem?.scraped);
     const withDesc =
       !base.product_description && editItem?.body_description
         ? { ...base, product_description: editItem.body_description }
@@ -282,11 +328,14 @@ function ItemFormContent() {
     };
   });
   const selectedImages = resolveSelectedImages(scraped);
+  const galleryUrls = useMemo(() => galleryImageUrls(scraped), [scraped]);
+  const [customImageUrl, setCustomImageUrl] = useState("");
+  const [customImageError, setCustomImageError] = useState("");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [scrapeLoading, setScrapeLoading] = useState(false);
   const [scrapeError, setScrapeError] = useState("");
   const [pendingVariants, setPendingVariants] = useState<{ base: ScrapedData; variants: ProductVariant[] } | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(!editId);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
 
   const filteredHistory = useMemo(
@@ -297,23 +346,15 @@ function ItemFormContent() {
   const hasScrapedData = !!(
     scraped.product_name || scraped.manufacturer || scraped.product_description
   );
+  const productReady = hasScrapedData;
   const totalUnitsPreview = Object.values(roomSelections).reduce((s, q) => s + q, 0);
 
   if (!project || !floor) return null;
 
   const buildScrapedState = (data: ScrapedData, variant?: ProductVariant): ScrapedData => {
-    const merged = variant
-      ? {
-          ...data,
-          model: variant.model ?? data.model,
-          color_temp_k: variant.color_temp_k ?? data.color_temp_k,
-          cri: variant.cri ?? data.cri,
-          watt_per_unit: variant.watt_per_unit ?? data.watt_per_unit,
-          voltage: variant.voltage ?? data.voltage,
-          current: variant.current ?? data.current,
-          max_ceiling_height_cm: variant.max_ceiling_height_cm ?? data.max_ceiling_height_cm,
-        }
-      : data;
+    const merged = normalizeScraped(
+      variant ? mergeVariantIntoScraped(data, variant) : data
+    );
     const desc =
       merged.product_description?.trim() ||
       [merged.product_name, merged.manufacturer, merged.model].filter(Boolean).join(" · ");
@@ -352,7 +393,7 @@ function ItemFormContent() {
             : "שגיאה בשליפת נתונים מהאתר";
         throw new Error(msg);
       }
-      const data = body as ScrapedData;
+      const data = normalizeScraped(body as ScrapedData);
       if (data.variants && data.variants.length > 1) {
         setPendingVariants({ base: data, variants: data.variants });
       } else {
@@ -377,13 +418,29 @@ function ItemFormContent() {
     setPendingVariants(null);
   };
 
+  const handleAddCustomImage = () => {
+    setCustomImageError("");
+    const url = customImageUrl.trim();
+    const result = addGalleryImageUrl(scraped, url);
+    if (result === "invalid") {
+      setCustomImageError("הזן קישור תקין (http או https)");
+      return;
+    }
+    if (result === "duplicate") {
+      setCustomImageError("התמונה כבר ברשימה");
+      return;
+    }
+    setScraped(toggleSelectedImage(result, url));
+    setCustomImageUrl("");
+  };
+
   const applyTemplate = (t: SavedLightingTemplate) => {
     setProductUrl(t.product_url);
     setDriverLocation(t.driver_location);
     setDimmingMethod(t.dimming_method);
     setUnitType(t.unit_type);
     setPricePerUnit(t.price_per_unit);
-    const base = t.scraped ?? emptyScraped();
+    const base = normalizeScraped(t.scraped);
     const withDesc =
       !base.product_description && t.body_description
         ? { ...base, product_description: t.body_description }
@@ -404,7 +461,9 @@ function ItemFormContent() {
       .map(([room_id, qty]) => ({ room_id, qty }));
     const itemData: Omit<LightingItem, "id"> = {
       section_id: sectionId, mark, product_url: productUrl,
-      driver_location: driverLocation, dimming_method: dimmingMethod,
+      driver_location: driverLocation,
+      dimming_method: dimmingMethod,
+      importer,
       body_description: scraped.product_description?.trim() || "",
       unit_type: unitType,
       price_per_unit: pricePerUnit, rooms: itemRooms, scraped,
@@ -549,44 +608,15 @@ function ItemFormContent() {
       </div>
 
       <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-8">
+        <div
+          className={cn(
+            "grid grid-cols-1 gap-8",
+            productReady && "xl:grid-cols-[1fr_380px]"
+          )}
+        >
 
           {/* ─── MAIN FORM ─── */}
           <div className="space-y-7">
-
-            {itemHistory.length > 0 && (
-              <div className="bg-card border border-border rounded-2xl overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setHistoryOpen((o) => !o)}
-                  className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-secondary/40 transition-colors"
-                >
-                  <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <History className="w-4 h-4 text-amber-500" />
-                    בחר מגוף קודם
-                    <span className="text-xs font-normal text-muted-foreground">
-                      ({itemHistory.length})
-                    </span>
-                  </span>
-                  <ChevronRight
-                    className={cn(
-                      "w-4 h-4 text-muted-foreground transition-transform",
-                      historyOpen && "rotate-90"
-                    )}
-                  />
-                </button>
-                {historyOpen && (
-                  <HistoryPickerPanel
-                    itemHistory={itemHistory}
-                    filteredHistory={filteredHistory}
-                    historySearch={historySearch}
-                    onSearchChange={setHistorySearch}
-                    onApply={applyTemplate}
-                    onRemove={removeItemTemplate}
-                  />
-                )}
-              </div>
-            )}
 
             {/* Identity row */}
             <div className="grid grid-cols-[1fr_130px] gap-4">
@@ -604,9 +634,12 @@ function ItemFormContent() {
                         onChange={(e) => setMark(e.target.value)}
                         className="text-lg font-bold text-center"
                       >
-                        {MARKS.map((m) => (
+                        {CATALOG_MARKS.map((m) => (
                           <option key={m} value={m}>{m}</option>
                         ))}
+                        {!CATALOG_MARKS.includes(mark as (typeof CATALOG_MARKS)[number]) && (
+                          <option value={mark}>{mark}</option>
+                        )}
                       </NativeSelect>
                     </F>
                   </div>
@@ -618,58 +651,132 @@ function ItemFormContent() {
               </div>
             </div>
 
-            {/* Product URL */}
-            <div className="bg-card border border-border rounded-2xl p-5">
-              <SectionBox title="קישור מוצר">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="https://..."
-                    value={productUrl}
-                    onChange={(e) => setProductUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleScrape()}
-                    dir="ltr"
-                    className="flex-1 font-mono text-sm h-11"
-                  />
+            {/* History + product URL */}
+            <div className="space-y-4">
+              {itemHistory.length > 0 && (
+                <div
+                  className={cn(
+                    "bg-card border rounded-2xl overflow-hidden flex flex-col",
+                    !productReady ? "border-amber-200 shadow-sm" : "border-border"
+                  )}
+                >
                   <button
-                    onClick={handleScrape}
-                    disabled={scrapeLoading || !productUrl.trim()}
-                    className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white font-semibold px-4 h-11 rounded-xl transition-colors whitespace-nowrap"
+                    type="button"
+                    onClick={() => setHistoryOpen((o) => !o)}
+                    className={cn(
+                      "w-full flex items-center justify-between px-5 py-3.5 transition-colors shrink-0",
+                      !productReady ? "bg-amber-50/80 hover:bg-amber-50" : "hover:bg-secondary/40"
+                    )}
                   >
-                    {scrapeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-                    משוך נתונים
+                    <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <History className="w-4 h-4 text-amber-500" />
+                      {productReady ? "בחר מגוף קודם" : "בחר גוף תאורה שהכנסת בעבר"}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        ({itemHistory.length})
+                      </span>
+                    </span>
+                    <ChevronRight
+                      className={cn(
+                        "w-4 h-4 text-muted-foreground transition-transform",
+                        historyOpen && "rotate-90"
+                      )}
+                    />
                   </button>
-                  {productUrl && (
-                    <a href={productUrl} target="_blank" rel="noopener noreferrer"
-                      className="h-11 w-11 flex items-center justify-center border border-border rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0">
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
+                  {historyOpen && (
+                    <HistoryPickerPanel
+                      itemHistory={itemHistory}
+                      filteredHistory={filteredHistory}
+                      historySearch={historySearch}
+                      onSearchChange={setHistorySearch}
+                      onApply={applyTemplate}
+                      onRemove={removeItemTemplate}
+                    />
                   )}
                 </div>
-                {scrapeError && (
-                  <p className="text-red-500 text-sm bg-red-50 border border-red-100 rounded-xl px-4 py-3">{scrapeError}</p>
-                )}
-                {hasScrapedData && !scrapeLoading && (
-                  <p className="flex items-center gap-1.5 text-sm text-green-600">
-                    <CheckCircle2 className="w-4 h-4" /> נתונים נמשכו בהצלחה — ניתן לעריכה בצד שמאל
+              )}
+
+              {!productReady && itemHistory.length > 0 && (
+                <div className="flex items-center gap-3 px-1">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-xs font-medium text-muted-foreground shrink-0">
+                    או הכניסי לינק חדש
+                  </span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+              )}
+
+              <div className="bg-card border border-border rounded-2xl p-5">
+                <SectionBox title="קישור מוצר">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="https://..."
+                      value={productUrl}
+                      onChange={(e) => setProductUrl(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleScrape()}
+                      dir="ltr"
+                      className="flex-1 font-mono text-sm h-11"
+                    />
+                    <button
+                      onClick={handleScrape}
+                      disabled={scrapeLoading || !productUrl.trim()}
+                      className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white font-semibold px-4 h-11 rounded-xl transition-colors whitespace-nowrap"
+                    >
+                      {scrapeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                      משוך נתונים
+                    </button>
+                    {productUrl && (
+                      <a href={productUrl} target="_blank" rel="noopener noreferrer"
+                        className="h-11 w-11 flex items-center justify-center border border-border rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0">
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    )}
+                  </div>
+                  {scrapeError && (
+                    <p className="text-red-500 text-sm bg-red-50 border border-red-100 rounded-xl px-4 py-3">{scrapeError}</p>
+                  )}
+                  {hasScrapedData && !scrapeLoading && (
+                    <p className="flex items-center gap-1.5 text-sm text-green-600">
+                      <CheckCircle2 className="w-4 h-4" /> נתונים נמשכו בהצלחה — ניתן לעריכה בפאנל המוצר
+                    </p>
+                  )}
+                </SectionBox>
+              </div>
+
+              {!productReady && (
+                <div className="rounded-2xl border border-amber-200/80 bg-amber-50/80 px-5 py-6 text-center">
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+                    <Link2 className="h-6 w-6" />
+                  </div>
+                  <p className="text-base font-semibold text-foreground leading-relaxed">
+                    {itemHistory.length > 0
+                      ? "הכניסי לינק למוצר חדש, או בחרי גוף תאורה מהרשימה למעלה"
+                      : "אנא הכניסי לינק למוצר על מנת שהמערכת תטען את המוצר"}
                   </p>
-                )}
-              </SectionBox>
+                  {productUrl.trim() && (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      לאחר הכנסת הקישור, לחצי על «משוך נתונים» לטעינת פרטי המוצר
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
+            {productReady && (
+            <>
             {/* Manual specs */}
             <div className="bg-card border border-border rounded-2xl p-5">
               <SectionBox title="מפרט ידני">
                 <div className="grid grid-cols-2 gap-4">
-                  <F label="מיקום ציוד">
+                  <F label="מיקום ציוד עזר">
                     <NativeSelect value={driverLocation} onChange={(e) => setDriverLocation(e.target.value)}>
-                      {DRIVER_LOCATIONS.map((d) => (
+                      {AUX_EQUIPMENT_LOCATIONS.map((d) => (
                         <option key={d} value={d}>{d}</option>
                       ))}
                     </NativeSelect>
                   </F>
-                  <F label="שיטת עמעום">
+                  <F label="שיטת שליטה">
                     <NativeSelect value={dimmingMethod} onChange={(e) => setDimmingMethod(e.target.value)}>
-                      {DIMMING_METHODS.map((d) => (
+                      {CONTROL_METHODS.map((d) => (
                         <option key={d} value={d}>{d}</option>
                       ))}
                     </NativeSelect>
@@ -689,6 +796,17 @@ function ItemFormContent() {
                     <Input type="number" min={0} value={pricePerUnit}
                       onChange={(e) => setPricePerUnit(Number(e.target.value))}
                       className="h-11 text-base font-semibold" />
+                  </F>
+                  <F label="יבואן">
+                    <NativeSelect value={importer} onChange={(e) => setImporter(e.target.value)}>
+                      <option value="">—</option>
+                      {CATALOG_IMPORTERS.map((name) => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                      {importer && !CATALOG_IMPORTERS.includes(importer as (typeof CATALOG_IMPORTERS)[number]) && (
+                        <option value={importer}>{importer}</option>
+                      )}
+                    </NativeSelect>
                   </F>
                 </div>
               </SectionBox>
@@ -754,32 +872,38 @@ function ItemFormContent() {
                 {editItem ? "שמור שינויים" : "הוסף גוף תאורה"}
               </button>
             </div>
+            </>
+            )}
+
+            {!productReady && (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/project/${projectId}/floor/${floorId}/items`)}
+                  className="w-full h-12 border border-border rounded-xl text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                >
+                  ביטול
+                </button>
+              </div>
+            )}
           </div>
 
           {/* ─── PRODUCT DATA PANEL ─── */}
+          {productReady && (
           <div className="space-y-4">
             <div className="sticky top-[80px]">
-              {!hasScrapedData ? (
-                <div className="bg-card border border-dashed border-border rounded-2xl p-8 flex flex-col items-center justify-center text-center gap-3">
-                  <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center">
-                    <Wand2 className="w-7 h-7 text-muted-foreground/30" />
-                  </div>
-                  <p className="text-sm font-semibold text-muted-foreground">אין נתוני מוצר עדיין</p>
-                  <p className="text-xs text-muted-foreground/60 max-w-[200px]">הכנס קישור ולחץ &quot;משוך נתונים&quot; לשליפה אוטומטית</p>
-                </div>
-              ) : (
                 <div className="bg-amber-50 border border-amber-100 rounded-2xl overflow-hidden">
                   {/* Product image / gallery picker */}
-                  {scraped.image_urls && scraped.image_urls.length > 0 ? (
-                    <div className="bg-white border-b border-amber-100 p-4 space-y-3">
+                  <div className="bg-white border-b border-amber-100 p-4 space-y-3">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-xs text-amber-700/70 font-medium">תמונות מוצר — בחר אחת או יותר</p>
                         <span className="text-xs text-amber-600 font-semibold shrink-0">
                           נבחרו {selectedImages.length}
                         </span>
                       </div>
+                      {galleryUrls.length > 0 && (
                       <div className="grid grid-cols-5 gap-1.5 max-h-40 overflow-y-auto">
-                        {scraped.image_urls.map((imgUrl, imgIndex) => {
+                        {galleryUrls.map((imgUrl, imgIndex) => {
                           const isSelected = selectedImages.includes(imgUrl);
                           return (
                             <div
@@ -817,22 +941,23 @@ function ItemFormContent() {
                           );
                         })}
                       </div>
-                      {lightboxIndex !== null && scraped.image_urls && (
+                      )}
+                      {lightboxIndex !== null && galleryUrls.length > 0 && (
                         <ImageLightbox
-                          urls={scraped.image_urls}
+                          urls={galleryUrls}
                           index={lightboxIndex}
-                          isSelected={selectedImages.includes(scraped.image_urls[lightboxIndex])}
+                          isSelected={selectedImages.includes(galleryUrls[lightboxIndex])}
                           onClose={() => setLightboxIndex(null)}
                           onNavigate={setLightboxIndex}
                           onToggleSelect={() =>
-                            setScraped((p) => toggleSelectedImage(p, scraped.image_urls![lightboxIndex]))
+                            setScraped((p) => toggleSelectedImage(p, galleryUrls[lightboxIndex]))
                           }
                         />
                       )}
                       {selectedImages.length > 0 && (
                         <div className="grid grid-cols-2 gap-2">
                           {selectedImages.map((imgUrl) => {
-                            const imgIndex = scraped.image_urls?.indexOf(imgUrl) ?? -1;
+                            const imgIndex = galleryUrls.indexOf(imgUrl);
                             return (
                               <div key={imgUrl} className="relative border border-amber-100 rounded-lg p-2 flex justify-center">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -852,16 +977,38 @@ function ItemFormContent() {
                           })}
                         </div>
                       )}
+                      <div className="flex gap-2 pt-1">
+                        <Input
+                          placeholder="https://... קישור לתמונה"
+                          value={customImageUrl}
+                          onChange={(e) => {
+                            setCustomImageUrl(e.target.value);
+                            if (customImageError) setCustomImageError("");
+                          }}
+                          onKeyDown={(e) => e.key === "Enter" && handleAddCustomImage()}
+                          dir="ltr"
+                          className="flex-1 font-mono text-xs h-9"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddCustomImage}
+                          disabled={!customImageUrl.trim()}
+                          className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white text-xs font-semibold px-3 h-9 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          הוסף תמונה
+                        </button>
+                      </div>
+                      {customImageError && (
+                        <p className="text-xs text-red-500">{customImageError}</p>
+                      )}
                     </div>
-                  ) : scraped.main_image_url ? (
-                    <div className="bg-white border-b border-amber-100 p-6 flex items-center justify-center min-h-[180px]">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={scraped.main_image_url} alt="product"
-                        className="max-h-44 max-w-full object-contain" />
-                    </div>
-                  ) : null}
 
                   <div className="p-5 space-y-4">
+                    <ProductDocumentLinks
+                      techSpecUrl={scraped.tech_spec_url}
+                      mountingInstructionsUrl={scraped.mounting_instructions_url}
+                    />
                     <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider">מידע מהאתר</p>
                     {/* Name + manufacturer */}
                     <div>
@@ -898,6 +1045,8 @@ function ItemFormContent() {
                       <SpecBadge icon={Gauge} label="מתח" value={scraped.voltage} />
                       <SpecBadge icon={Bolt} label="זרם" value={scraped.current} />
                       <SpecBadge icon={Maximize2} label="גובה תקרה מקס׳" value={scraped.max_ceiling_height_cm ? `${scraped.max_ceiling_height_cm} ס״מ` : null} />
+                      <SpecBadge icon={Sun} label="לומן" value={formatLumens(scraped.lumens)} />
+                      <SpecBadge icon={Gauge} label="IP" value={scraped.ip_rating ?? null} />
                     </div>
 
                     {/* Editable fields */}
@@ -923,10 +1072,10 @@ function ItemFormContent() {
                         <EditField label="זרם" value={scraped.current}
                           onChange={(v) => setScraped((p) => ({ ...p, current: v || null }))} />
                       </div>
+                      <CatalogSpecEditor scraped={scraped} onChange={setScraped} />
                     </div>
                   </div>
                 </div>
-              )}
 
               {/* Description card (if product has rooms) */}
               {floor.rooms.length === 0 && (
@@ -948,6 +1097,7 @@ function ItemFormContent() {
               )}
             </div>
           </div>
+          )}
 
         </div>
       </div>

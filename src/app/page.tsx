@@ -5,13 +5,21 @@ import { useRouter } from "next/navigation";
 import { useStore } from "@/store/useStore";
 import { calcProjectTotals } from "@/lib/project";
 import { Input } from "@/components/ui/input";
-import { Trash2, FolderOpen, Plus, Layers, Lightbulb, ArrowLeft } from "lucide-react";
+import { Trash2, FolderOpen, Plus, Layers, Lightbulb, ArrowRight } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function HomePage() {
   const router = useRouter();
   const { projects, addProject, deleteProject } = useStore();
   const [newName, setNewName] = useState("");
   const [adding, setAdding] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const handleAdd = () => {
     const trimmed = newName.trim();
@@ -116,9 +124,10 @@ export default function HomePage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm(`למחוק את "${project.name}"?`)) deleteProject(project.id);
+                          setDeleteTarget({ id: project.id, name: project.name });
                         }}
-                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-all p-1 rounded-lg hover:bg-red-50 mr-1"
+                        className="text-muted-foreground/40 group-hover:text-muted-foreground hover:!text-red-500 transition-all p-2 rounded-lg hover:bg-red-50 shrink-0"
+                        aria-label="מחק פרויקט"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -149,7 +158,7 @@ export default function HomePage() {
                         onClick={() => router.push(`/project/${project.id}`)}
                         className="flex-1 text-xs font-medium bg-slate-800 text-white rounded-lg px-3 py-2 hover:bg-slate-700 transition-colors flex items-center justify-center gap-1.5"
                       >
-                        <ArrowLeft className="w-3.5 h-3.5" />
+                        <ArrowRight className="w-3.5 h-3.5" />
                         פתח פרויקט
                       </button>
                     </div>
@@ -160,6 +169,31 @@ export default function HomePage() {
           </div>
         )}
       </div>
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent dir="rtl" className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>מחיקת פרויקט</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            האם למחוק את &quot;{deleteTarget?.name}&quot;? פעולה זו אינה הפיכה.
+          </p>
+          <DialogFooter className="flex gap-2 mt-2">
+            <button
+              onClick={() => setDeleteTarget(null)}
+              className="flex-1 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors"
+            >
+              ביטול
+            </button>
+            <button
+              onClick={() => { deleteProject(deleteTarget!.id); setDeleteTarget(null); }}
+              className="flex-1 py-2 text-sm bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+            >
+              מחק
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

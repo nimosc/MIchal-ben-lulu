@@ -1,4 +1,13 @@
+import { normalizeScraped } from "@/lib/scrapedData";
 import { Floor, LightingItem, Project, Room } from "@/types";
+
+export function normalizeLightingItem(item: LightingItem): LightingItem {
+  return {
+    ...item,
+    importer: item.importer ?? "",
+    scraped: item.scraped ? normalizeScraped(item.scraped) : null,
+  };
+}
 
 export function calcItemTotals(item: LightingItem) {
   const totalUnits = item.rooms.reduce((s, r) => s + r.qty, 0);
@@ -55,7 +64,14 @@ export function createFloor(
 /** Migrate legacy projects that had rooms/items at project root */
 export function migrateProject(raw: Record<string, unknown>): Project {
   if (Array.isArray(raw.floors)) {
-    return raw as unknown as Project;
+    const project = raw as unknown as Project;
+    return {
+      ...project,
+      floors: project.floors.map((floor) => ({
+        ...floor,
+        items: floor.items.map(normalizeLightingItem),
+      })),
+    };
   }
   const legacyRooms = (raw.rooms as Room[] | undefined) ?? [];
   const legacyItems = (raw.items as LightingItem[] | undefined) ?? [];
@@ -63,6 +79,13 @@ export function migrateProject(raw: Record<string, unknown>): Project {
   const { rooms: _legacyRooms, items: _legacyItems, ...rest } = raw;
   return {
     ...(rest as Omit<Project, "floors">),
-    floors: [createFloor("קומת קרקע", 0, legacyRooms, legacyItems)],
+      floors: [
+        createFloor(
+          "קומת קרקע",
+          0,
+          legacyRooms,
+          legacyItems.map(normalizeLightingItem)
+        ),
+      ],
   };
 }

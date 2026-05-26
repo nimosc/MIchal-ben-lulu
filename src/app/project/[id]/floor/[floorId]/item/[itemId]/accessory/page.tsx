@@ -4,6 +4,9 @@ import { useState, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/store/useStore";
 import { cn } from "@/lib/utils";
+import { CatalogSpecEditor } from "@/components/CatalogSpecEditor";
+import { ProductDocumentLinks } from "@/components/ProductDocumentLinks";
+import { formatLumens, normalizeScraped } from "@/lib/scrapedData";
 import { Accessory, ScrapedData } from "@/types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,14 +25,6 @@ import {
   Maximize2,
   Bolt,
 } from "lucide-react";
-
-const emptyScraped = (): ScrapedData => ({
-  product_name: null, manufacturer: null, model: null,
-  color_temp_k: null, cri: null, watt_per_unit: null,
-  voltage: null, current: null, max_ceiling_height_cm: null,
-  main_image_url: null, product_description: null,
-  selected_image_urls: [],
-});
 
 function NativeSelect({ className, ...props }: React.ComponentProps<"select">) {
   return (
@@ -113,7 +108,7 @@ function AccessoryFormContent() {
     return m;
   });
   const [scraped, setScraped] = useState<ScrapedData>(() =>
-    editAccessory?.scraped ?? emptyScraped()
+    normalizeScraped(editAccessory?.scraped)
   );
   const [scrapeLoading, setScrapeLoading] = useState(false);
   const [scrapeError, setScrapeError] = useState("");
@@ -141,7 +136,7 @@ function AccessoryFormContent() {
             : "שגיאה בשליפת נתונים מהאתר";
         throw new Error(msg);
       }
-      const data = body as ScrapedData;
+      const data = normalizeScraped(body as ScrapedData);
       const desc =
         data.product_description?.trim() ||
         [data.product_name, data.manufacturer, data.model].filter(Boolean).join(" · ");
@@ -268,6 +263,11 @@ function AccessoryFormContent() {
                     <CheckCircle2 className="w-4 h-4" /> נתונים נמשכו בהצלחה — ניתן לעריכה בצד שמאל
                   </p>
                 )}
+                <ProductDocumentLinks
+                  techSpecUrl={scraped.tech_spec_url}
+                  mountingInstructionsUrl={scraped.mounting_instructions_url}
+                  className="pt-1"
+                />
               </SectionBox>
             </div>
 
@@ -407,6 +407,8 @@ function AccessoryFormContent() {
                       <SpecBadge icon={Gauge} label="מתח" value={scraped.voltage} />
                       <SpecBadge icon={Bolt} label="זרם" value={scraped.current} />
                       <SpecBadge icon={Maximize2} label="גובה תקרה מקס׳" value={scraped.max_ceiling_height_cm ? `${scraped.max_ceiling_height_cm} ס״מ` : null} />
+                      <SpecBadge icon={Sun} label="לומן" value={formatLumens(scraped.lumens)} />
+                      <SpecBadge icon={Gauge} label="IP" value={scraped.ip_rating ?? null} />
                     </div>
 
                     <div className="border-t border-amber-100 pt-4 space-y-3">
@@ -431,6 +433,7 @@ function AccessoryFormContent() {
                         <EditField label="זרם" value={scraped.current}
                           onChange={(v) => setScraped((p) => ({ ...p, current: v || null }))} />
                       </div>
+                      <CatalogSpecEditor scraped={scraped} onChange={setScraped} />
                     </div>
                   </div>
                 </div>

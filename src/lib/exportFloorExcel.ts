@@ -18,10 +18,10 @@ const META_HEADERS = [
   "כדוגמאת",
   "יצרן",
   "הערות אדריכלית לפני אישור ליועץ תאורה",
-  "מיקום ציוד (מרוחק/ אינטגרלי/ מקומי)",
+  "מיקום ציוד עזר",
   "מתח/ זרם",
   "מרחק מקסימלי של דרייבר מגוף תאורה",
-  "שיטת עמעום",
+  "שיטת שליטה",
 ] as const;
 
 const COL_OFFSET = 1;
@@ -62,8 +62,8 @@ function bodyText(scraped: ScrapedData | null, bodyDescription: string): string 
   return scraped?.product_description?.trim() || bodyDescription || "";
 }
 
-function finishTone(scraped: ScrapedData | null): string {
-  return scraped?.color_temp_k ? `${scraped.color_temp_k}K` : "";
+function finishColor(scraped: ScrapedData | null): string {
+  return scraped?.finish_color?.trim() || "";
 }
 
 function ceilingHeight(scraped: ScrapedData | null): string | number {
@@ -104,7 +104,7 @@ function writeDataRow(
   row.getCell(FIRST_META_COL + 1).value = ctx.mark;
   row.getCell(FIRST_META_COL + 2).value = "";
   row.getCell(FIRST_META_COL + 3).value = bodyText(ctx.scraped, ctx.bodyDescription);
-  row.getCell(FIRST_META_COL + 4).value = finishTone(ctx.scraped);
+  row.getCell(FIRST_META_COL + 4).value = finishColor(ctx.scraped);
   row.getCell(FIRST_META_COL + 5).value = ceilingHeight(ctx.scraped);
   row.getCell(FIRST_META_COL + 6).value = ctx.productUrl || "";
   row.getCell(FIRST_META_COL + 7).value = ctx.scraped?.manufacturer ?? "";

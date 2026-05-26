@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -33,6 +33,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { CatalogTemplateSettings } from "@/components/CatalogTemplateSettings";
 
 const DEFAULT_PRESET_ROOMS = [
   "מטבח",
@@ -109,10 +110,16 @@ function SortablePreset({
             }}
             className="flex-1 text-sm font-medium bg-transparent border-b border-amber-400 outline-none py-0.5 text-foreground"
           />
-          <button onClick={commitEdit} className="text-amber-500 hover:text-amber-600 p-1 rounded-lg hover:bg-amber-50 transition-colors">
+          <button
+            onClick={commitEdit}
+            className="text-amber-500 hover:text-amber-600 p-1 rounded-lg hover:bg-amber-50 transition-colors"
+          >
             <Check className="w-3.5 h-3.5" />
           </button>
-          <button onClick={cancelEdit} className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-secondary transition-colors">
+          <button
+            onClick={cancelEdit}
+            className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-secondary transition-colors"
+          >
             <X className="w-3.5 h-3.5" />
           </button>
         </>
@@ -195,10 +202,9 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-56px)] bg-background" dir="rtl">
-      {/* Page header */}
-      <div className="border-b border-border bg-card">
-        <div className="max-w-3xl mx-auto px-6 py-5">
+    <section className="min-h-[calc(100vh-56px)] bg-background" dir="rtl">
+      <header className="border-b border-border bg-card">
+        <section className="max-w-3xl mx-auto px-6 py-5">
           <button
             onClick={() => router.push("/")}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4 group"
@@ -206,28 +212,32 @@ export default function SettingsPage() {
             <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             <span>חזרה לפרויקטים</span>
           </button>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center">
+          <section className="flex items-center gap-3">
+            <section className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center">
               <Settings className="w-5 h-5 text-slate-500" />
-            </div>
-            <div>
+            </section>
+            <section>
               <h1 className="text-xl font-bold text-foreground">הגדרות</h1>
-              <p className="text-sm text-muted-foreground">ניהול רשימת חדרים מהירים</p>
-            </div>
-          </div>
-        </div>
-      </div>
+              <p className="text-sm text-muted-foreground">
+                חדרים מהירים, תבנית מצגת קטלוג ושדות ייצוא
+              </p>
+            </section>
+          </section>
+        </section>
+      </header>
 
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-          <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-            <div>
+      <section className="max-w-3xl mx-auto px-6 py-8 space-y-8">
+        <CatalogTemplateSettings />
+
+        <section className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+          <header className="px-6 py-4 border-b border-border flex items-center justify-between">
+            <section>
               <h2 className="font-semibold text-foreground">חדרים מהירים</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
                 אלו החדרים שיופיעו כאפשרות הוספה מהירה בכל פרויקט
               </p>
-            </div>
-            <div className="flex items-center gap-2">
+            </section>
+            <section className="flex items-center gap-2">
               <span className="tag-amber">{rooms.length} חדרים</span>
               <button
                 onClick={handleReset}
@@ -236,12 +246,11 @@ export default function SettingsPage() {
                 <RotateCcw className="w-3 h-3" />
                 איפוס
               </button>
-            </div>
-          </div>
+            </section>
+          </header>
 
-          <div className="p-6 space-y-4">
-            {/* Add input */}
-            <div className="flex gap-2">
+          <section className="p-6 space-y-4">
+            <section className="flex gap-2">
               <Input
                 placeholder="שם חדר חדש..."
                 value={newRoom}
@@ -257,13 +266,10 @@ export default function SettingsPage() {
                 <Plus className="w-4 h-4" />
                 הוסף
               </Button>
-            </div>
+            </section>
 
-            {/* Sortable list */}
             {rooms.length === 0 ? (
-              <p className="text-center text-sm text-muted-foreground py-8">
-                אין חדרים ברשימה
-              </p>
+              <p className="text-center text-sm text-muted-foreground py-8">אין חדרים ברשימה</p>
             ) : (
               <DndContext
                 sensors={sensors}
@@ -289,16 +295,15 @@ export default function SettingsPage() {
               </DndContext>
             )}
 
-            {/* Save */}
             <Button
               onClick={handleSave}
               className="w-full h-11 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl mt-2"
             >
               {saved ? "נשמר!" : "שמור שינויים"}
             </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+          </section>
+        </section>
+      </section>
+    </section>
   );
 }

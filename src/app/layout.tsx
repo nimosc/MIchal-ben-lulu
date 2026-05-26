@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import Link from "next/link";
+import { StoreProvider } from "@/components/StoreProvider";
 
 export const metadata: Metadata = {
   title: "מפרטי תאורה",
@@ -51,8 +52,10 @@ export default function RootLayout({
           </div>
         </header>
 
-        <main>{children}</main>
-        <Toaster position="bottom-right" />
+        <StoreProvider>
+          <main>{children}</main>
+          <Toaster position="bottom-right" />
+        </StoreProvider>
       </body>
     </html>
   );

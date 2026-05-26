@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { extractProductDocuments } from "@/lib/extractProductDocuments";
+import { buildScrapeToolSchema } from "@/lib/scrapeSchema";
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
@@ -8,49 +10,13 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const PRODUCT_TOOL: Anthropic.Tool = {
   name: "save_product_data",
   description: "Save extracted lighting fixture data from a product page",
-  input_schema: {
-    type: "object",
-    properties: {
-      product_name: { type: ["string", "null"] },
-      manufacturer: { type: ["string", "null"] },
-      model: { type: ["string", "null"] },
-      color_temp_k: { type: ["number", "null"] },
-      cri: { type: ["number", "null"] },
-      watt_per_unit: { type: ["number", "null"] },
-      voltage: { type: ["string", "null"] },
-      current: { type: ["string", "null"] },
-      max_ceiling_height_cm: { type: ["number", "null"] },
-      main_image_url: { type: ["string", "null"] },
-      product_description: {
-        type: ["string", "null"],
-        description: "Short Hebrew description, 1-3 sentences",
-      },
-      variants: {
-        type: ["array", "null"],
-        description: "Product variants if multiple models exist on page, max 8",
-        items: {
-          type: "object",
-          properties: {
-            label: { type: "string" },
-            model: { type: ["string", "null"] },
-            color_temp_k: { type: ["number", "null"] },
-            cri: { type: ["number", "null"] },
-            watt_per_unit: { type: ["number", "null"] },
-            voltage: { type: ["string", "null"] },
-            current: { type: ["string", "null"] },
-            max_ceiling_height_cm: { type: ["number", "null"] },
-          },
-          required: ["label"],
-        },
-      },
-    },
-  },
+  input_schema: buildScrapeToolSchema(),
 };
 
 async function extractWithTool(pageText: string): Promise<Record<string, unknown>> {
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 2048,
+    max_tokens: 4096,
     tools: [PRODUCT_TOOL],
     tool_choice: { type: "tool", name: "save_product_data" },
     messages: [
@@ -58,6 +24,7 @@ async function extractWithTool(pageText: string): Promise<Record<string, unknown
         role: "user",
         content: `Extract lighting fixture data from this product page and call save_product_data.
 Use null for unknown fields. Keep product_description concise in Hebrew.
+Extract catalog fields when present: lumens (number), ip_rating, optics (reflector, lens_cover, beam_angle, adjustment, light_distribution), physical dimensions, finish_color (material/finish, NOT color temperature), lamp_life_hours, luminaire_efficiency, glare_rating, light_source.
 
 Page content:
 ${pageText}`,
@@ -112,8 +79,13 @@ export async function POST(req: NextRequest) {
       .slice(0, 8000);
 
     const parsed = await extractWithTool(text);
+    const documents = extractProductDocuments(html, url);
 
-    return NextResponse.json({ ...parsed, image_urls: imageUrls.slice(0, 20) });
+    return NextResponse.json({
+      ...parsed,
+      ...documents,
+      image_urls: imageUrls.slice(0, 20),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown error";
     console.error("scrape error", err);

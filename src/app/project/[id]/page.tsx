@@ -14,8 +14,15 @@ import {
   Layers,
   Settings,
   FileDown,
-  ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const FLOOR_PRESETS = ["קומת קרקע", "קומה 1", "קומה 2", "קומה 3", "מרתף", "גג"];
 
@@ -29,6 +36,8 @@ export default function ProjectFloorsPage() {
   const [newFloorName, setNewFloorName] = useState("");
   const [adding, setAdding] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [deleteFloorTarget, setDeleteFloorTarget] = useState<{ id: string; name: string } | null>(null);
+  const [lastFloorAlert, setLastFloorAlert] = useState(false);
 
   if (!project) {
     return (
@@ -206,14 +215,13 @@ export default function ProjectFloorsPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             if (project.floors.length <= 1) {
-                              alert("לא ניתן למחוק את הקומה האחרונה");
+                              setLastFloorAlert(true);
                               return;
                             }
-                            if (confirm(`למחוק את "${floor.name}" וכל הגופים שבה?`)) {
-                              deleteFloor(projectId, floor.id);
-                            }
+                            setDeleteFloorTarget({ id: floor.id, name: floor.name });
                           }}
-                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 p-1 rounded-lg hover:bg-red-50 transition-all"
+                          className="text-muted-foreground/40 group-hover:text-muted-foreground hover:!text-red-500 transition-all p-2 rounded-lg hover:bg-red-50 shrink-0"
+                          aria-label="מחק קומה"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -244,7 +252,7 @@ export default function ProjectFloorsPage() {
                           onClick={() => router.push(`/project/${projectId}/floor/${floor.id}/items`)}
                           className="flex-1 text-xs font-medium bg-slate-800 text-white rounded-lg py-2 hover:bg-slate-700 flex items-center justify-center gap-1"
                         >
-                          <ArrowLeft className="w-3.5 h-3.5" />
+                          <ArrowRight className="w-3.5 h-3.5" />
                           גופים
                         </button>
                       </div>
@@ -269,6 +277,50 @@ export default function ProjectFloorsPage() {
           </div>
         )}
       </div>
+
+      {/* Delete floor confirmation */}
+      <Dialog open={deleteFloorTarget !== null} onOpenChange={(open) => { if (!open) setDeleteFloorTarget(null); }}>
+        <DialogContent dir="rtl" className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>מחיקת קומה</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            האם למחוק את &quot;{deleteFloorTarget?.name}&quot; וכל הגופים שבה? פעולה זו אינה הפיכה.
+          </p>
+          <DialogFooter className="flex gap-2 mt-2">
+            <button
+              onClick={() => setDeleteFloorTarget(null)}
+              className="flex-1 py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors"
+            >
+              ביטול
+            </button>
+            <button
+              onClick={() => { deleteFloor(projectId, deleteFloorTarget!.id); setDeleteFloorTarget(null); }}
+              className="flex-1 py-2 text-sm bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+            >
+              מחק
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Last floor alert */}
+      <Dialog open={lastFloorAlert} onOpenChange={setLastFloorAlert}>
+        <DialogContent dir="rtl" className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>לא ניתן למחוק</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">לא ניתן למחוק את הקומה האחרונה בפרויקט.</p>
+          <DialogFooter className="mt-2">
+            <button
+              onClick={() => setLastFloorAlert(false)}
+              className="w-full py-2 text-sm border border-border rounded-lg hover:bg-secondary transition-colors"
+            >
+              סגור
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

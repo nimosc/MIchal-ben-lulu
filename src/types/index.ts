@@ -18,6 +18,22 @@ export interface ProductVariant {
   voltage?: string | null;
   current?: string | null;
   max_ceiling_height_cm?: number | null;
+  lumens?: number | null;
+  ip_rating?: string | null;
+  light_source?: string | null;
+  finish_color?: string | null;
+  body_diameter?: string | null;
+  body_width?: string | null;
+  body_height?: string | null;
+  rosette_type?: string | null;
+  lamp_life_hours?: string | null;
+  luminaire_efficiency?: string | null;
+  glare_rating?: string | null;
+  reflector?: string | null;
+  lens_cover?: string | null;
+  beam_angle?: string | null;
+  adjustment?: string | null;
+  light_distribution?: string | null;
 }
 
 export interface ScrapedData {
@@ -35,6 +51,28 @@ export interface ScrapedData {
   image_urls?: string[];
   selected_image_urls?: string[];
   variants?: ProductVariant[] | null;
+  tech_spec_url?: string | null;
+  mounting_instructions_url?: string | null;
+  /** שורת מפרט תחתונה */
+  lumens?: number | null;
+  ip_rating?: string | null;
+  light_source?: string | null;
+  /** נתונים פיזיים */
+  finish_color?: string | null;
+  body_diameter?: string | null;
+  body_width?: string | null;
+  body_height?: string | null;
+  rosette_type?: string | null;
+  /** נתוני חשמל (מעבר לדרייבר/שליטה על הפריט) */
+  lamp_life_hours?: string | null;
+  luminaire_efficiency?: string | null;
+  glare_rating?: string | null;
+  /** אופטיקה */
+  reflector?: string | null;
+  lens_cover?: string | null;
+  beam_angle?: string | null;
+  adjustment?: string | null;
+  light_distribution?: string | null;
 }
 
 export interface Accessory {
@@ -68,6 +106,7 @@ export interface LightingItem {
   product_url: string;
   driver_location: string;
   dimming_method: string;
+  importer: string;
   body_description: string;
   unit_type: "יח'" | "מטר";
   price_per_unit: number;
