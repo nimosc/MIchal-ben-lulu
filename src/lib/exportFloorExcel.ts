@@ -1,69 +1,104 @@
 import ExcelJS from "exceljs";
-import {
-  Accessory,
-  Floor,
-  LightingItem,
-  Project,
-  Room,
-  ScrapedData,
-} from "@/types";
+import { Floor, Accessory, Project, ScrapedData } from "@/types";
 
-const META_HEADERS = [
-  "סעיף",
-  "סימון",
-  "המחשה",
-  "תאור הגוף",
-  "גוון גמר",
-  "לגובה תקרה",
-  "כדוגמאת",
-  "יצרן",
-  "הערות אדריכלית לפני אישור ליועץ תאורה",
-  "מיקום ציוד עזר",
-  "מתח/ זרם",
-  "מרחק מקסימלי של דרייבר מגוף תאורה",
-  "שיטת שליטה",
-] as const;
+// ── Template column layout (1-based) ────────────────────────────────────────
+// C-N  (3-14 ) : fixed meta   (12 cols)
+// O    (15)    : single room placeholder
+// P-W  (16-23) : fixed trailing (8 cols) – total, unit, notes, price, total-price, delivery, watt, total-watt
+const META_FIRST     = 3;   // C
+const META_LAST      = 14;  // N
+const TPL_ROOM_COL   = 15;  // O
+const TPL_TRAIL_FIRST = 16; // P  — offset 0 = total
+// Trailing col offsets from TPL_TRAIL_FIRST:
+const T_TOTAL    = 0; // סה"כ יחידות  (yellow)
+const T_UNIT     = 1; // יח'/מטר      (gray)
+const T_NOTES    = 2; // הערות        (gray)
+const T_PRICE    = 3; // מחיר ליח'    (none)
+const T_TPRICE   = 4; // סה"כ מחיר   (none)
+const T_DELIVERY = 5; // זמני אספקה  (none)
+const T_WATT     = 6; // WATT         (yellow)
+const T_TWATT    = 7; // סה"כ WATT   (yellow)
+const TRAIL_COUNT = 8;
 
-const COL_OFFSET = 1;
-const META_COL_COUNT = META_HEADERS.length;
-const FIRST_META_COL = COL_OFFSET + 1;
-const FIRST_ROOM_COL = FIRST_META_COL + META_COL_COUNT;
+// Output rows
+const TITLE_ROW  = 3;
+const HEADER_ROW = 4;
+const DATA_START = 5;
 
-function colLetter(col: number): string {
-  let n = col;
-  let s = "";
-  while (n > 0) {
-    const m = (n - 1) % 26;
-    s = String.fromCharCode(65 + m) + s;
-    n = Math.floor((n - 1) / 26);
-  }
+type CellStyle = {
+  fill?:      ExcelJS.Fill;
+  font?:      ExcelJS.Font;
+  border?:    ExcelJS.Borders;
+  alignment?: ExcelJS.Alignment;
+};
+
+function readStyle(cell: ExcelJS.Cell): CellStyle {
+  const s: CellStyle = {};
+  if (cell.fill   && (cell.fill as ExcelJS.FillPattern).type)       s.fill      = JSON.parse(JSON.stringify(cell.fill));
+  if (cell.font)                            s.font      = JSON.parse(JSON.stringify(cell.font));
+  if (cell.border && Object.keys(cell.border).length) s.border = JSON.parse(JSON.stringify(cell.border));
+  if (cell.alignment)                       s.alignment = JSON.parse(JSON.stringify(cell.alignment));
   return s;
 }
 
-function sanitizeFilename(name: string): string {
-  return name.replace(/[<>:"/\\|?*]/g, "-").trim();
+function applyStyle(cell: ExcelJS.Cell, s: CellStyle) {
+  if (s.fill)      cell.fill      = s.fill as ExcelJS.Fill;
+  if (s.font)      cell.font      = s.font;
+  if (s.border)    cell.border    = s.border;
+  if (s.alignment) cell.alignment = s.alignment as ExcelJS.Alignment;
 }
 
-function uniqueSheetName(wb: ExcelJS.Workbook, baseName: string): string {
-  const invalid = /[\\/*?:[\]]/g;
-  const name = (baseName.replace(invalid, "-").trim() || "קומה").slice(0, 31);
-  if (!wb.getWorksheet(name)) return name;
-  let n = 2;
-  while (n < 100) {
-    const suffix = ` (${n})`;
-    const candidate = baseName.replace(invalid, "-").trim().slice(0, 31 - suffix.length) + suffix;
-    if (!wb.getWorksheet(candidate)) return candidate;
-    n++;
+/** Styles extracted from the template (header row + data row) */
+interface TemplateStyles {
+  header: { meta: CellStyle[]; room: CellStyle; trailing: CellStyle[] };
+  data:   { meta: CellStyle[]; room: CellStyle; trailing: CellStyle[] };
+  rowHeights: { [r: number]: number | undefined };
+  colWidths:  { meta: (number|undefined)[]; room: number|undefined; trailing: (number|undefined)[] };
+}
+
+let _templateCache: TemplateStyles | null = null;
+
+async function loadTemplateStyles(): Promise<TemplateStyles> {
+  if (_templateCache) return _templateCache;
+
+  const res = await fetch("/excel-template.xlsx");
+  const buf = await res.arrayBuffer();
+  const wb  = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf);
+  const ws = wb.worksheets[0];
+
+  function rowStyles(r: number) {
+    const row = ws.getRow(r);
+    const meta: CellStyle[] = [];
+    for (let c = META_FIRST; c <= META_LAST; c++) meta.push(readStyle(row.getCell(c)));
+    const room = readStyle(row.getCell(TPL_ROOM_COL));
+    const trailing: CellStyle[] = [];
+    for (let i = 0; i < TRAIL_COUNT; i++) trailing.push(readStyle(row.getCell(TPL_TRAIL_FIRST + i)));
+    return { meta, room, trailing };
   }
-  return `קומה ${n}`.slice(0, 31);
+
+  _templateCache = {
+    header: rowStyles(HEADER_ROW),
+    data:   rowStyles(DATA_START),
+    rowHeights: {
+      [HEADER_ROW]: ws.getRow(HEADER_ROW).height,
+      [DATA_START]: ws.getRow(DATA_START).height,
+    },
+    colWidths: {
+      meta:     Array.from({ length: META_LAST - META_FIRST + 1 }, (_, i) =>
+                  ws.getColumn(META_FIRST + i).width),
+      room:     ws.getColumn(TPL_ROOM_COL).width,
+      trailing: Array.from({ length: TRAIL_COUNT }, (_, i) =>
+                  ws.getColumn(TPL_TRAIL_FIRST + i).width),
+    },
+  };
+  return _templateCache;
 }
 
-function bodyText(scraped: ScrapedData | null, bodyDescription: string): string {
-  return scraped?.product_description?.trim() || bodyDescription || "";
-}
+// ── Cell value helpers ──────────────────────────────────────────────────────
 
-function finishColor(scraped: ScrapedData | null): string {
-  return scraped?.finish_color?.trim() || "";
+function bodyText(scraped: ScrapedData | null, fallback: string): string {
+  return scraped?.product_description?.trim() || fallback || "";
 }
 
 function ceilingHeight(scraped: ScrapedData | null): string | number {
@@ -72,148 +107,259 @@ function ceilingHeight(scraped: ScrapedData | null): string | number {
   return Number.isInteger(m) ? m : Math.round(m * 100) / 100;
 }
 
-function qtyByRoom(
-  rooms: { room_id: string; qty: number }[],
-  roomId: string
-): number | "" {
-  const entry = rooms.find((r) => r.room_id === roomId);
-  return entry && entry.qty > 0 ? entry.qty : "";
+function roomQty(rooms: { room_id: string; qty: number }[], roomId: string): number | "" {
+  const e = rooms.find((r) => r.room_id === roomId);
+  return e && e.qty > 0 ? e.qty : "";
 }
 
-interface RowContext {
-  sectionId?: number;
-  mark: string;
-  scraped: ScrapedData | null;
-  productUrl: string;
-  bodyDescription: string;
-  driverLocation: string;
-  dimmingMethod: string;
-  unitType: string;
-  rooms: { room_id: string; qty: number }[];
+function colLetter(col: number): string {
+  let n = col, s = "";
+  while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
 }
 
-function writeDataRow(
-  ws: ExcelJS.Worksheet,
-  rowNum: number,
-  ctx: RowContext,
-  sortedRooms: Room[],
-  totalCol: number
-) {
-  const row = ws.getRow(rowNum);
-  row.getCell(FIRST_META_COL).value = ctx.sectionId ?? "";
-  row.getCell(FIRST_META_COL + 1).value = ctx.mark;
-  row.getCell(FIRST_META_COL + 2).value = "";
-  row.getCell(FIRST_META_COL + 3).value = bodyText(ctx.scraped, ctx.bodyDescription);
-  row.getCell(FIRST_META_COL + 4).value = finishColor(ctx.scraped);
-  row.getCell(FIRST_META_COL + 5).value = ceilingHeight(ctx.scraped);
-  row.getCell(FIRST_META_COL + 6).value = ctx.productUrl || "";
-  row.getCell(FIRST_META_COL + 7).value = ctx.scraped?.manufacturer ?? "";
-  row.getCell(FIRST_META_COL + 8).value = "";
-  row.getCell(FIRST_META_COL + 9).value = ctx.driverLocation || "";
-  row.getCell(FIRST_META_COL + 10).value = ctx.scraped?.voltage ?? "";
-  row.getCell(FIRST_META_COL + 11).value = "";
-  row.getCell(FIRST_META_COL + 12).value = ctx.dimmingMethod || "";
+function sanitizeFilename(name: string): string {
+  return name.replace(/[<>:"/\\|?*]/g, "-").trim();
+}
 
-  sortedRooms.forEach((room, i) => {
-    row.getCell(FIRST_ROOM_COL + i).value = qtyByRoom(ctx.rooms, room.id);
-  });
-
-  const first = colLetter(FIRST_ROOM_COL);
-  const last = colLetter(FIRST_ROOM_COL + sortedRooms.length - 1);
-  if (sortedRooms.length > 0) {
-    row.getCell(totalCol).value = {
-      formula: `SUM(${first}${rowNum}:${last}${rowNum})`,
-    };
-  } else {
-    row.getCell(totalCol).value = 0;
+function uniqueSheetName(wb: ExcelJS.Workbook, baseName: string): string {
+  const inv = /[\\/*?:[\]]/g;
+  const clean = (baseName.replace(inv, "-").trim() || "קומה").slice(0, 31);
+  if (!wb.getWorksheet(clean)) return clean;
+  for (let n = 2; n < 100; n++) {
+    const s = ` (${n})`;
+    const c = baseName.replace(inv, "-").trim().slice(0, 31 - s.length) + s;
+    if (!wb.getWorksheet(c)) return c;
   }
-  row.getCell(totalCol + 1).value = ctx.unitType;
+  return `קומה`.slice(0, 31);
 }
 
-function itemToContext(item: LightingItem): RowContext {
-  return {
-    sectionId: item.section_id,
-    mark: item.mark,
-    scraped: item.scraped,
-    productUrl: item.product_url,
-    bodyDescription: item.body_description,
-    driverLocation: item.driver_location,
-    dimmingMethod: item.dimming_method,
-    unitType: item.unit_type,
-    rooms: item.rooms,
-  };
-}
+// ── Sheet builder ───────────────────────────────────────────────────────────
 
-function accessoryToContext(
-  acc: Accessory,
-  parent: LightingItem,
-  mark: string
-): RowContext {
-  return {
-    mark,
-    scraped: acc.scraped,
-    productUrl: acc.product_url,
-    bodyDescription: acc.body_description,
-    driverLocation: parent.driver_location,
-    dimmingMethod: parent.dimming_method,
-    unitType: acc.unit_type,
-    rooms: acc.rooms,
-  };
-}
-
-function applyColumnWidths(ws: ExcelJS.Worksheet, totalCol: number) {
-  ws.getColumn(1).width = 4;
-  ws.columns.forEach((col, i) => {
-    const colNum = i + 1;
-    if (colNum === FIRST_META_COL + 2) col.width = 14;
-    else if (colNum === FIRST_META_COL + 3) col.width = 48;
-    else if (colNum >= FIRST_ROOM_COL && colNum < totalCol) col.width = 12;
-    else if (colNum >= FIRST_META_COL) col.width = 16;
-  });
-}
-
-function addFloorSheet(wb: ExcelJS.Workbook, project: Project, floor: Floor): void {
+async function addFloorSheet(
+  wb: ExcelJS.Workbook,
+  project: Project,
+  floor: Floor,
+  tpl: TemplateStyles
+): Promise<void> {
   const sortedRooms = [...floor.rooms].sort((a, b) => a.order - b.order);
-  const totalCol = FIRST_ROOM_COL + sortedRooms.length;
-  const unitCol = totalCol + 1;
-  const sheetName = uniqueSheetName(wb, floor.name);
+  const N = sortedRooms.length;
 
+  // Dynamic column positions (1-based)
+  const ROOM_FIRST  = META_LAST + 1;           // 15 = O
+  const TRAIL_FIRST = ROOM_FIRST + N;           // after rooms
+  const LAST_COL    = TRAIL_FIRST + TRAIL_COUNT - 1;
+
+  const totalCol    = TRAIL_FIRST + T_TOTAL;
+  const unitCol     = TRAIL_FIRST + T_UNIT;
+  const notesCol    = TRAIL_FIRST + T_NOTES;
+  const priceCol    = TRAIL_FIRST + T_PRICE;
+  const tPriceCol   = TRAIL_FIRST + T_TPRICE;
+  const deliveryCol = TRAIL_FIRST + T_DELIVERY;
+  const wattCol     = TRAIL_FIRST + T_WATT;
+  const tWattCol    = TRAIL_FIRST + T_TWATT;
+
+  const sheetName = uniqueSheetName(wb, floor.name);
   const ws = wb.addWorksheet(sheetName, { views: [{ rightToLeft: true }] });
 
-  ws.getCell(3, FIRST_META_COL).value =
-    `${project.name} כמויות תאורה פנים- ${floor.name}`;
-  ws.getCell(3, FIRST_META_COL).font = { bold: true, size: 12 };
-
-  const headerRow = ws.getRow(4);
-  META_HEADERS.forEach((h, i) => {
-    headerRow.getCell(FIRST_META_COL + i).value = h;
-  });
-  sortedRooms.forEach((room, i) => {
-    headerRow.getCell(FIRST_ROOM_COL + i).value = room.name;
-  });
-  headerRow.getCell(totalCol).value = 'סה"כ יחידות';
-  headerRow.getCell(unitCol).value = "יח'/ מטר";
-  headerRow.font = { bold: true };
-  headerRow.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-
-  let rowNum = 5;
-  for (const item of floor.items) {
-    writeDataRow(ws, rowNum, itemToContext(item), sortedRooms, totalCol);
-    rowNum++;
-    (item.accessories ?? []).forEach((acc, idx) => {
-      writeDataRow(
-        ws,
-        rowNum,
-        accessoryToContext(acc, item, `${item.mark}.${idx + 1}`),
-        sortedRooms,
-        totalCol
-      );
-      rowNum++;
-    });
+  // ── Column widths ──────────────────────────────────────────────────────────
+  for (let i = 0; i < META_LAST - META_FIRST + 1; i++) {
+    if (tpl.colWidths.meta[i]) ws.getColumn(META_FIRST + i).width = tpl.colWidths.meta[i]!;
+  }
+  for (let r = 0; r < N; r++) {
+    if (tpl.colWidths.room) ws.getColumn(ROOM_FIRST + r).width = tpl.colWidths.room;
+  }
+  for (let i = 0; i < TRAIL_COUNT; i++) {
+    if (tpl.colWidths.trailing[i]) ws.getColumn(TRAIL_FIRST + i).width = tpl.colWidths.trailing[i]!;
   }
 
-  applyColumnWidths(ws, totalCol);
+  // ── Title row (row 3) ──────────────────────────────────────────────────────
+  ws.mergeCells(`${colLetter(META_FIRST)}${TITLE_ROW}:${colLetter(LAST_COL)}${TITLE_ROW}`);
+  const titleCell = ws.getCell(TITLE_ROW, META_FIRST);
+  titleCell.value = `${project.name} כמויות תאורה פנים- ${floor.name}`;
+  titleCell.font  = { bold: true, size: 18, name: "Arial" };
+  titleCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+
+  // ── Header row (row 4) ─────────────────────────────────────────────────────
+  const hRow = ws.getRow(HEADER_ROW);
+  if (tpl.rowHeights[HEADER_ROW]) hRow.height = tpl.rowHeights[HEADER_ROW]!;
+
+  // Meta headers
+  for (let i = 0; i < tpl.header.meta.length; i++) {
+    const cell = hRow.getCell(META_FIRST + i);
+    cell.value = ws.getRow(HEADER_ROW).getCell(META_FIRST + i).value; // will be set below
+    applyStyle(cell, tpl.header.meta[i]);
+  }
+
+  // Set actual meta header values
+  const metaHeaders = [
+    "סעיף", "סימון", "תאור הגוף", "גוון גמר", "לגובה תקרה",
+    "כדוגמאת", "יצרן",
+    "הערות אדריכלית לפני אישור ליועץ תאורה",
+    "מיקום ציוד (מרוחק/ אינטגרלי/ מקומי)",
+    "מתח/ זרם", "מרחק מקסימלי של דרייבר מגוף תאורה", "שיטת עמעום",
+  ];
+  metaHeaders.forEach((h, i) => {
+    hRow.getCell(META_FIRST + i).value = h;
+  });
+
+  // Room headers
+  sortedRooms.forEach((room, i) => {
+    const cell = hRow.getCell(ROOM_FIRST + i);
+    cell.value = room.name;
+    applyStyle(cell, tpl.header.room);
+  });
+
+  // Trailing headers
+  const trailingHeaders = [
+    'סה"כ יחידות', "יח' / מטר", "הערות",
+    'מחיר ליח\' לפני מע"מ', 'סה"כ לפני מע"מ', "זמני אספקה",
+    "WATT ליחי' /מטר System Power (W)", "סה\"כ WATT Total Power (W)",
+  ];
+  trailingHeaders.forEach((h, i) => {
+    const cell = hRow.getCell(TRAIL_FIRST + i);
+    cell.value = h;
+    applyStyle(cell, tpl.header.trailing[i]);
+  });
+
+  // Fix outer borders: medium-left on first col, medium-right on last col
+  const fixBorder = (col: number, side: "left" | "right") => {
+    const cell = hRow.getCell(col);
+    const b = JSON.parse(JSON.stringify(cell.border || {}));
+    b[side] = { style: "medium", color: { argb: "FF000000" } };
+    cell.border = b;
+  };
+  fixBorder(META_FIRST, "left");
+  fixBorder(LAST_COL, "right");
+
+  // ── Data rows ──────────────────────────────────────────────────────────────
+  let rowNum = DATA_START;
+
+  const writeRow = (ctx: {
+    sectionId?: number;
+    mark: string;
+    scraped: ScrapedData | null;
+    productUrl: string;
+    bodyDescription: string;
+    driverLocation: string;
+    dimmingMethod: string;
+    unitType: string;
+    pricePerUnit: number;
+    rooms: { room_id: string; qty: number }[];
+  }) => {
+    const row = ws.getRow(rowNum);
+    if (tpl.rowHeights[DATA_START]) row.height = tpl.rowHeights[DATA_START];
+
+    const setMeta = (offset: number, val: ExcelJS.CellValue, styleIdx: number) => {
+      const cell = row.getCell(META_FIRST + offset);
+      cell.value = val;
+      applyStyle(cell, tpl.data.meta[styleIdx]);
+    };
+
+    setMeta(0, ctx.sectionId ?? "", 0);           // C: סעיף
+    setMeta(1, ctx.mark, 1);                       // D: סימון
+    setMeta(2, bodyText(ctx.scraped, ctx.bodyDescription), 2); // E: תאור הגוף
+    setMeta(3, ctx.scraped?.finish_color ?? "", 3); // F: גוון גמר
+    setMeta(4, ceilingHeight(ctx.scraped), 4);     // G: לגובה תקרה
+    setMeta(5, ctx.productUrl || "", 5);           // H: כדוגמאת
+    setMeta(6, ctx.scraped?.manufacturer ?? "", 6);// I: יצרן
+    setMeta(7, "", 7);                             // J: הערות אדריכלית
+    setMeta(8, ctx.driverLocation || "", 8);       // K: מיקום ציוד
+    setMeta(9, ctx.scraped?.voltage ?? "", 9);     // L: מתח/זרם
+    setMeta(10, "", 10);                           // M: מרחק מקסימלי
+    setMeta(11, ctx.dimmingMethod || "", 11);      // N: שיטת עמעום
+
+    // Room quantities
+    sortedRooms.forEach((room, i) => {
+      const cell = row.getCell(ROOM_FIRST + i);
+      cell.value = roomQty(ctx.rooms, room.id);
+      applyStyle(cell, tpl.data.room);
+    });
+
+    // Trailing
+    const firstRoom = colLetter(ROOM_FIRST);
+    const lastRoom  = N > 0 ? colLetter(ROOM_FIRST + N - 1) : firstRoom;
+
+    const total = row.getCell(totalCol);
+    total.value = N > 0 ? { formula: `SUM(${firstRoom}${rowNum}:${lastRoom}${rowNum})` } : 0;
+    applyStyle(total, tpl.data.trailing[T_TOTAL]);
+
+    const unit = row.getCell(unitCol);
+    unit.value = ctx.unitType;
+    applyStyle(unit, tpl.data.trailing[T_UNIT]);
+
+    const notes = row.getCell(notesCol);
+    notes.value = "";
+    applyStyle(notes, tpl.data.trailing[T_NOTES]);
+
+    const price = row.getCell(priceCol);
+    price.value = ctx.pricePerUnit > 0 ? ctx.pricePerUnit : "";
+    applyStyle(price, tpl.data.trailing[T_PRICE]);
+
+    const tPrice = row.getCell(tPriceCol);
+    tPrice.value = ctx.pricePerUnit > 0
+      ? { formula: `${colLetter(totalCol)}${rowNum}*${colLetter(priceCol)}${rowNum}` }
+      : "";
+    applyStyle(tPrice, tpl.data.trailing[T_TPRICE]);
+
+    const delivery = row.getCell(deliveryCol);
+    delivery.value = "";
+    applyStyle(delivery, tpl.data.trailing[T_DELIVERY]);
+
+    const watt = row.getCell(wattCol);
+    watt.value = ctx.scraped?.watt_per_unit ?? "";
+    applyStyle(watt, tpl.data.trailing[T_WATT]);
+
+    const tWatt = row.getCell(tWattCol);
+    tWatt.value = ctx.scraped?.watt_per_unit
+      ? { formula: `${colLetter(wattCol)}${rowNum}*${colLetter(totalCol)}${rowNum}` }
+      : "";
+    applyStyle(tWatt, tpl.data.trailing[T_TWATT]);
+
+    // Outer borders on data row
+    const fixDataBorder = (col: number, side: "left" | "right") => {
+      const cell = row.getCell(col);
+      const b = JSON.parse(JSON.stringify(cell.border || {}));
+      b[side] = { style: "medium", color: { argb: "FF000000" } };
+      cell.border = b;
+    };
+    fixDataBorder(META_FIRST, "left");
+    fixDataBorder(LAST_COL,   "right");
+
+    rowNum++;
+  };
+
+  for (const item of floor.items) {
+    writeRow({
+      sectionId:      item.section_id,
+      mark:           item.mark,
+      scraped:        item.scraped,
+      productUrl:     item.product_url,
+      bodyDescription: item.body_description,
+      driverLocation: item.driver_location,
+      dimmingMethod:  item.dimming_method,
+      unitType:       item.unit_type,
+      pricePerUnit:   item.price_per_unit,
+      rooms:          item.rooms,
+    });
+
+    (item.accessories ?? []).forEach((acc: Accessory, idx) => {
+      writeRow({
+        mark:           `${item.mark}.${idx + 1}`,
+        scraped:        acc.scraped,
+        productUrl:     acc.product_url,
+        bodyDescription: acc.body_description,
+        driverLocation: item.driver_location,
+        dimmingMethod:  item.dimming_method,
+        unitType:       acc.unit_type,
+        pricePerUnit:   acc.price_per_unit,
+        rooms:          acc.rooms,
+      });
+    });
+  }
 }
+
+// ── Download helpers ────────────────────────────────────────────────────────
 
 async function downloadWorkbook(wb: ExcelJS.Workbook, filename: string) {
   const buffer = await wb.xlsx.writeBuffer();
@@ -228,27 +374,28 @@ async function downloadWorkbook(wb: ExcelJS.Workbook, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export async function exportFloorToExcel(
-  project: Project,
-  floor: Floor
-): Promise<void> {
-  const wb = new ExcelJS.Workbook();
+// ── Public API ──────────────────────────────────────────────────────────────
+
+export async function exportFloorToExcel(project: Project, floor: Floor): Promise<void> {
+  const tpl = await loadTemplateStyles();
+  const wb  = new ExcelJS.Workbook();
   wb.creator = "lighting-app";
-  addFloorSheet(wb, project, floor);
+  await addFloorSheet(wb, project, floor, tpl);
   const filename = `${sanitizeFilename(project.name)}-${sanitizeFilename(floor.name)}-כמויות-תאורה.xlsx`;
   await downloadWorkbook(wb, filename);
 }
 
 export async function exportProjectToExcel(project: Project): Promise<void> {
-  const wb = new ExcelJS.Workbook();
+  const tpl = await loadTemplateStyles();
+  const wb  = new ExcelJS.Workbook();
   wb.creator = "lighting-app";
   const floors = [...project.floors].sort((a, b) => a.order - b.order);
   for (const floor of floors) {
-    addFloorSheet(wb, project, floor);
+    await addFloorSheet(wb, project, floor, tpl);
   }
   if (floors.length === 0) {
-    const ws = wb.addWorksheet("פרויקט", { views: [{ rightToLeft: true }] });
-    ws.getCell(3, FIRST_META_COL).value = `${project.name} — אין קומות`;
+    wb.addWorksheet("פרויקט", { views: [{ rightToLeft: true }] })
+      .getCell(TITLE_ROW, META_FIRST).value = `${project.name} — אין קומות`;
   }
   const filename = `${sanitizeFilename(project.name)}-כמויות-תאורה.xlsx`;
   await downloadWorkbook(wb, filename);

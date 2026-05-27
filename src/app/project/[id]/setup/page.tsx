@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/store/useStore";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,13 @@ export default function ProjectSetupPage() {
   const project = projects.find((p) => p.id === projectId);
 
   const [webhookUrl, setWebhookUrl] = useState(project?.webhook_url ?? "");
+  const [projectName, setProjectName] = useState(project?.name ?? "");
+
+  useEffect(() => {
+    if (!project) return;
+    setWebhookUrl(project.webhook_url ?? "");
+    setProjectName(project.name ?? "");
+  }, [project]);
 
   if (!project) {
     return (
@@ -25,7 +32,9 @@ export default function ProjectSetupPage() {
   }
 
   const handleSave = () => {
-    updateProject(projectId, { webhook_url: webhookUrl });
+    const trimmedName = projectName.trim();
+    if (!trimmedName) return;
+    updateProject(projectId, { name: trimmedName, webhook_url: webhookUrl });
     router.push(`/project/${projectId}`);
   };
 
@@ -50,13 +59,32 @@ export default function ProjectSetupPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-foreground">הגדרות פרויקט</h1>
-              <p className="text-sm text-muted-foreground">{project.name}</p>
+              <p className="text-sm text-muted-foreground">{projectName || project.name}</p>
             </div>
           </div>
         </div>
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+            <Link className="w-4 h-4 text-muted-foreground" />
+            <h2 className="font-semibold text-foreground">שם פרויקט</h2>
+          </div>
+          <div className="p-6">
+            <Input
+              placeholder="שם הפרויקט..."
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              className="font-mono text-sm h-10"
+              dir="rtl"
+            />
+            <p className="text-xs text-muted-foreground mt-2">
+              משמש גם לחלק מהתבניות והייצוא.
+            </p>
+          </div>
+        </div>
+
         <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
           <div className="px-6 py-4 border-b border-border flex items-center gap-2">
             <Link className="w-4 h-4 text-muted-foreground" />

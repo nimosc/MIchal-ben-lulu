@@ -22,6 +22,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const buildSha = (process.env.NEXT_PUBLIC_BUILD_SHA || "").slice(0, 7);
+  const buildTime = process.env.NEXT_PUBLIC_BUILD_TIME || "";
+
   return (
     <html lang="he" dir="rtl" className={heebo.variable}>
       <body className={`${heebo.className} antialiased bg-background min-h-screen`}>
@@ -56,6 +59,13 @@ export default function RootLayout({
           <main>{children}</main>
           <Toaster position="bottom-right" />
         </StoreProvider>
+
+        {(buildSha || buildTime) && (
+          <div className="fixed bottom-2 left-2 z-50 text-[10px] leading-tight text-muted-foreground/80 bg-background/70 border border-border/60 rounded-md px-2 py-1 backdrop-blur">
+            <div>build: {buildSha || "local"}</div>
+            {buildTime && <div className="opacity-80">{buildTime}</div>}
+          </div>
+        )}
       </body>
     </html>
   );

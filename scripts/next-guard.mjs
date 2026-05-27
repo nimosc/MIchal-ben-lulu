@@ -27,10 +27,21 @@ if (command === "dev") {
   if (preflight.status !== 0) process.exit(preflight.status ?? 1);
 }
 
+const env = { ...process.env };
+if (command === "dev") {
+  const patch = join(__dirname, "patch-next-server-chunks.cjs");
+  const flag = `--require ${patch}`;
+  env.NODE_OPTIONS = env.NODE_OPTIONS
+    ? env.NODE_OPTIONS.includes(flag)
+      ? env.NODE_OPTIONS
+      : `${env.NODE_OPTIONS} ${flag}`
+    : flag;
+}
+
 const child = spawn(process.execPath, [nextBin, command, ...args], {
   stdio: "inherit",
   cwd: appRoot,
-  env: process.env,
+  env,
 });
 
 child.on("exit", (code, signal) => {
