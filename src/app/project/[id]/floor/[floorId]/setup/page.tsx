@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/store/useStore";
 import { Room } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -118,14 +118,36 @@ function SortableRoom({
 export default function SetupPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const projectId = params.id as string;
   const floorId = params.floorId as string;
-  const { projects, setRooms, presetRooms } = useStore();
+  const { projects, setRooms, presetRooms, updateItem } = useStore();
   const project = projects.find((p) => p.id === projectId);
   const floor = project?.floors.find((f) => f.id === floorId);
 
   const [rooms, setLocalRooms] = useState<Room[]>(floor?.rooms ?? []);
   const [newRoom, setNewRoom] = useState("");
+  const shouldFocusAddRoom = searchParams.get("addRoom") === "1";
+  const otherFloors = useMemo(
+    () => project?.floors.filter((f) => f.id !== floorId).sort((a, b) => a.order - b.order) ?? [],
+    [project, floorId]
+  );
+  const [copyFromFloorId, setCopyFromFloorId] = useState<string>(otherFloors[0]?.id ?? "");
+
+  useEffect(() => {
+    // If project loads after first render, ensure we have a default source floor.
+    if (!copyFromFloorId && otherFloors[0]?.id) setCopyFromFloorId(otherFloors[0].id);
+  }, [copyFromFloorId, otherFloors]);
+
+  useEffect(() => {
+    if (!shouldFocusAddRoom) return;
+    // Input component doesn't forward refs, so focus via id.
+    const el = document.getElementById("add-room-input") as HTMLInputElement | null;
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    el.focus();
+    el.select?.();
+  }, [shouldFocusAddRoom]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -172,8 +194,42 @@ export default function SetupPage() {
   };
 
   const handleSave = () => {
+    // Keep item.room entries valid after the room structure changes.
+    // (If a room was deleted/truncated, its room_id would otherwise become dangling.)
+    const roomIdSet = new Set(rooms.map((r) => r.id));
+    for (const item of floor?.items ?? []) {
+      const filtered = item.rooms.filter((r) => roomIdSet.has(r.room_id));
+      if (filtered.length !== item.rooms.length) {
+        updateItem(projectId, floorId, item.id, { rooms: filtered });
+      }
+    }
     setRooms(projectId, floorId, rooms);
     router.push(`/project/${projectId}/floor/${floorId}/items`);
+  };
+
+  const handleCopyRoomsFromFloor = () => {
+    const sourceFloor = project?.floors.find((f) => f.id === copyFromFloorId);
+    if (!sourceFloor) return;
+
+    if ((floor?.items?.length ?? 0) > 0) {
+      const ok = window.confirm(
+        "יש כבר גופי תאורה בקומה הזו. ההעתקה תעדכן את מבנה החדרים ועלולה לגרום לאיבוד כמויות לחדרים שלא קיימים בתבנית. להמשיך?"
+      );
+      if (!ok) return;
+    }
+
+    const sourceRooms = [...sourceFloor.rooms].sort((a, b) => a.order - b.order);
+    const targetRooms = [...rooms].sort((a, b) => a.order - b.order);
+
+    const next: Room[] = [];
+    for (let i = 0; i < sourceRooms.length; i++) {
+      if (i < targetRooms.length) {
+        next.push({ ...targetRooms[i], name: sourceRooms[i].name, order: i });
+      } else {
+        next.push({ id: crypto.randomUUID(), name: sourceRooms[i].name, order: i });
+      }
+    }
+    setLocalRooms(next);
   };
 
   return (
@@ -212,10 +268,44 @@ export default function SetupPage() {
           </div>
 
           <div className="p-6">
+            {/* Copy room structure from another floor */}
+            {otherFloors.length > 0 && (
+              <div className="mb-5">
+                <div className="text-xs font-semibold text-muted-foreground mb-2">
+                  העתק מבנה חדרים מקומה אחרת
+                </div>
+                <div className="flex gap-3 items-end">
+                  <div className="flex-1">
+                    <select
+                      value={copyFromFloorId}
+                      onChange={(e) => setCopyFromFloorId(e.target.value)}
+                      className="h-10 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none cursor-pointer"
+                      dir="rtl"
+                    >
+                      {otherFloors.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={handleCopyRoomsFromFloor}
+                    disabled={!copyFromFloorId}
+                    className="h-10 bg-slate-800 hover:bg-slate-700 text-white font-semibold gap-1.5 px-4 rounded-xl"
+                  >
+                    העתק
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Add room input */}
             <div className="flex gap-2 mb-3">
               <Input
                 placeholder="שם חדר — למשל: סלון, חדר שינה, כניסה..."
+                id="add-room-input"
                 value={newRoom}
                 onChange={(e) => setNewRoom(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && addRoom()}

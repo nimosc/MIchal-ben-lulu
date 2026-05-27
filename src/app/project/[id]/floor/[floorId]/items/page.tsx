@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/store/useStore";
 import { calcFloorTotals, calcItemTotals, getFloor } from "@/lib/project";
@@ -18,7 +18,6 @@ import {
   Settings,
   Zap,
   Package,
-  DollarSign,
   Layers,
   Wrench,
 } from "lucide-react";
@@ -57,6 +56,31 @@ export default function FloorItemsPage() {
     });
   };
 
+  const items = floor?.items ?? [];
+
+  const roomMap = useMemo(
+    () => new Map((floor?.rooms ?? []).map((r) => [r.id, r.name])),
+    [floor?.rooms]
+  );
+
+  const floorTotals = useMemo(
+    () => (floor ? calcFloorTotals(floor) : { totalUnits: 0, totalPrice: 0, totalWatt: 0 }),
+    [floor]
+  );
+  const { totalUnits, totalPrice, totalWatt } = floorTotals;
+  const allUnitTypesAreMeters = items.length > 0 && items.every((i) => i.unit_type === "מטר");
+  const allUnitTypesAreUnits = items.length > 0 && items.every((i) => i.unit_type === "יח'");
+  const unitSummaryLabel = allUnitTypesAreMeters
+    ? "מ'"
+    : allUnitTypesAreUnits
+      ? "יח'"
+      : "יח/ מטר";
+  const unitColumnLabel = allUnitTypesAreMeters
+    ? "מ'"
+    : allUnitTypesAreUnits
+      ? "יח'"
+      : "יח/ מטר";
+
   if (!project || !floor) {
     return (
       <div className="min-h-[calc(100vh-56px)] flex items-center justify-center" dir="rtl">
@@ -64,10 +88,6 @@ export default function FloorItemsPage() {
       </div>
     );
   }
-
-  const floorTotals = calcFloorTotals(floor);
-  const { totalUnits, totalPrice, totalWatt } = floorTotals;
-  const items = floor.items;
 
   const handleExportExcel = async () => {
     setExporting(true);
@@ -239,13 +259,13 @@ export default function FloorItemsPage() {
             </div>
             <div className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium mb-1.5">
-                <Package className="w-3.5 h-3.5" /> סה״כ יחידות
+                <Package className="w-3.5 h-3.5" /> סה״כ {unitSummaryLabel}
               </div>
               <p className="text-2xl font-bold text-foreground">{totalUnits}</p>
             </div>
             <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
               <div className="flex items-center gap-2 text-amber-600 text-xs font-medium mb-1.5">
-                <DollarSign className="w-3.5 h-3.5" /> סה״כ מחיר
+                <span className="text-sm font-bold leading-none" aria-hidden>₪</span> סה״כ מחיר לפני מע״מ
               </div>
               <p className="text-2xl font-bold text-amber-700">₪{totalPrice.toLocaleString()}</p>
             </div>
@@ -298,8 +318,8 @@ export default function FloorItemsPage() {
                     <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">מוצר</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">תיאור</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">חדרים</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">יח׳</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">מחיר</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">{unitColumnLabel}</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">מחיר לפני מע״מ</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">שליטה</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">נתונים</th>
                     <th className="px-4 py-3 w-16"></th>
@@ -307,7 +327,8 @@ export default function FloorItemsPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {items.map((item, idx) => {
-                    const { totalUnits, totalPriceExVat, totalWatt } = calcItemTotals(item);
+                    const itemTotals = calcItemTotals(item);
+                    const { totalUnits, totalPriceExVat, totalWatt } = itemTotals;
                     const accessories = item.accessories ?? [];
                     const isExpanded = expandedItems.has(item.id);
                     return (
@@ -344,17 +365,16 @@ export default function FloorItemsPage() {
                         </td>
                         <td className="px-4 py-3.5">
                           <div className="flex flex-wrap gap-1">
-                            {item.rooms.map((r) => {
-                              const room = floor.rooms.find((rm) => rm.id === r.room_id);
-                              return (
-                                <span key={r.room_id} className="tag text-xs">
-                                  {room?.name ?? r.room_id} <span className="text-muted-foreground">×{r.qty}</span>
-                                </span>
-                              );
-                            })}
+                            {item.rooms.map((r) => (
+                              <span key={r.room_id} className="tag text-xs">
+                                {roomMap.get(r.room_id) ?? r.room_id} <span className="text-muted-foreground">×{r.qty}</span>
+                              </span>
+                            ))}
                           </div>
                         </td>
-                        <td className="px-4 py-3.5 font-semibold text-foreground">{totalUnits}</td>
+                        <td className="px-4 py-3.5 font-semibold text-foreground">
+                          {totalUnits} {item.unit_type === "מטר" ? "מ'" : "יח'"}
+                        </td>
                         <td className="px-4 py-3.5 font-semibold text-amber-600">₪{totalPriceExVat.toLocaleString()}</td>
                         <td className="px-4 py-3.5">
                           <span className="tag text-xs">{item.dimming_method}</span>
@@ -440,7 +460,8 @@ export default function FloorItemsPage() {
                                         <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
                                           {accUnits > 0 && (
                                             <span className="flex items-center gap-0.5">
-                                              <Package className="w-3 h-3" />{accUnits} {acc.unit_type}
+                                              <Package className="w-3 h-3" />
+                                              {accUnits} {acc.unit_type === "מטר" ? "מ'" : "יח'"}
                                             </span>
                                           )}
                                           {accPrice > 0 && (
@@ -489,8 +510,8 @@ export default function FloorItemsPage() {
             </div>
             <div className="border-t border-border bg-secondary/40 px-5 py-3.5 flex flex-wrap gap-x-8 gap-y-1 text-sm">
               <span className="text-muted-foreground">גופים: <strong className="text-foreground">{items.length}</strong></span>
-              <span className="text-muted-foreground">יחידות: <strong className="text-foreground">{totalUnits}</strong></span>
-              <span className="text-muted-foreground">מחיר: <strong className="text-amber-600">₪{totalPrice.toLocaleString()}</strong></span>
+              <span className="text-muted-foreground">{unitSummaryLabel}: <strong className="text-foreground">{totalUnits}</strong></span>
+              <span className="text-muted-foreground">מחיר לפני מע״מ: <strong className="text-amber-600">₪{totalPrice.toLocaleString()}</strong></span>
               <span className="text-muted-foreground">חשמל: <strong className="text-foreground">{totalWatt}W</strong></span>
             </div>
           </div>

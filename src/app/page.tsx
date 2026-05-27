@@ -140,7 +140,7 @@ export default function HomePage() {
                         <p className="text-xl font-bold text-foreground">{totals.totalUnits}</p>
                       </div>
                       <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
-                        <p className="text-xs text-amber-600 mb-0.5">סה״כ מחיר</p>
+                        <p className="text-xs text-amber-600 mb-0.5">סה״כ מחיר לפני מע״מ</p>
                         <p className="text-xl font-bold text-amber-700">₪{totals.totalPrice.toLocaleString()}</p>
                       </div>
                     </div>

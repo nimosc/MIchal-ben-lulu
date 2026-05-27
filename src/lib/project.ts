@@ -56,9 +56,10 @@ export function createFloor(
   name: string,
   order: number,
   rooms: Room[] = [],
-  items: LightingItem[] = []
+  items: LightingItem[] = [],
+  id?: string
 ): Floor {
-  return { id: crypto.randomUUID(), name, order, rooms, items };
+  return { id: id ?? crypto.randomUUID(), name, order, rooms, items };
 }
 
 /** Migrate legacy projects that had rooms/items at project root */

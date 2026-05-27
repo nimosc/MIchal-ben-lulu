@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { supabase } from "@/lib/supabase";
+import { DEFAULT_CATALOG_IMPORTERS } from "@/lib/catalogImporters";
+import { DEFAULT_CATALOG_MARKS } from "@/lib/catalogMarks";
 import { createFloor, migrateProject } from "@/lib/project";
 import { upsertItemHistory } from "@/lib/itemHistory";
 import {
@@ -61,13 +63,31 @@ function syncProject(project: Project) {
     });
 }
 
-function syncSettings(presetRooms: string[], itemHistory: SavedLightingTemplate[]) {
+type AppSettingsPayload = {
+  presetRooms: string[];
+  itemHistory: SavedLightingTemplate[];
+  catalogImporters: string[];
+  catalogMarks: string[];
+};
+
+function syncSettings(payload: AppSettingsPayload) {
   supabase
     .from("app_settings")
-    .upsert({ key: "global", value: { presetRooms, itemHistory } })
+    .upsert({ key: "global", value: payload })
     .then(({ error }) => {
       if (error) console.error("[Supabase] settings sync error:", error);
     });
+}
+
+function syncFromStore(get: () => StoreState) {
+  const { presetRooms, itemHistory, catalogImporters, catalogMarks } = get();
+  syncSettings({ presetRooms, itemHistory, catalogImporters, catalogMarks });
+}
+
+/** רשימה שמורה בהגדרות — אם קיימת, היא מקור האמת (כולל מחיקות/עריכות). */
+function loadSettingsList(saved: string[] | undefined, defaults: readonly string[]): string[] {
+  if (saved !== undefined) return saved;
+  return [...defaults];
 }
 
 const defaultPresetRooms = [
@@ -90,13 +110,15 @@ const defaultPresetRooms = [
 interface StoreState {
   projects: Project[];
   presetRooms: string[];
+  catalogImporters: string[];
+  catalogMarks: string[];
   itemHistory: SavedLightingTemplate[];
   isLoaded: boolean;
   initialize: () => Promise<void>;
   addProject: (name: string) => void;
   deleteProject: (id: string) => void;
   updateProject: (id: string, data: Partial<Project>) => void;
-  addFloor: (projectId: string, name: string) => void;
+  addFloor: (projectId: string, name: string) => string;
   deleteFloor: (projectId: string, floorId: string) => void;
   updateFloor: (projectId: string, floorId: string, data: Partial<Pick<Floor, "name" | "order">>) => void;
   setRooms: (projectId: string, floorId: string, rooms: Room[]) => void;
@@ -111,6 +133,10 @@ interface StoreState {
     status: LightingItem["scraped_status"]
   ) => void;
   setPresetRooms: (rooms: string[]) => void;
+  setCatalogImporters: (importers: string[]) => void;
+  setCatalogMarks: (marks: string[]) => void;
+  addCatalogImporter: (name: string) => string | null;
+  addCatalogMark: (mark: string) => string | null;
   addAccessory: (projectId: string, floorId: string, itemId: string, accessory: Accessory) => void;
   updateAccessory: (projectId: string, floorId: string, itemId: string, accessoryId: string, data: Partial<Accessory>) => void;
   deleteAccessory: (projectId: string, floorId: string, itemId: string, accessoryId: string) => void;
@@ -122,6 +148,8 @@ export const useStore = create<StoreState>()((set, get) => ({
   projects: [],
   itemHistory: [],
   presetRooms: defaultPresetRooms,
+  catalogImporters: [...DEFAULT_CATALOG_IMPORTERS],
+  catalogMarks: [...DEFAULT_CATALOG_MARKS],
   isLoaded: false,
 
   initialize: async () => {
@@ -137,7 +165,7 @@ export const useStore = create<StoreState>()((set, get) => ({
       console.error("[Supabase] load settings error:", settingsResult.error);
     }
 
-    type Settings = { presetRooms?: string[]; itemHistory?: SavedLightingTemplate[] };
+    type Settings = Partial<AppSettingsPayload>;
     const settings = settingsResult.data?.value as Settings | null;
 
     // Migrate any legacy data in floors
@@ -157,6 +185,8 @@ export const useStore = create<StoreState>()((set, get) => ({
     set({
       projects,
       presetRooms: settings?.presetRooms ?? defaultPresetRooms,
+      catalogImporters: loadSettingsList(settings?.catalogImporters, DEFAULT_CATALOG_IMPORTERS),
+      catalogMarks: loadSettingsList(settings?.catalogMarks, DEFAULT_CATALOG_MARKS),
       itemHistory: settings?.itemHistory ?? [],
       isLoaded: true,
     });
@@ -164,8 +194,37 @@ export const useStore = create<StoreState>()((set, get) => ({
 
   setPresetRooms: (rooms) => {
     set({ presetRooms: rooms });
-    const { itemHistory } = get();
-    syncSettings(rooms, itemHistory);
+    syncFromStore(get);
+  },
+
+  setCatalogImporters: (importers) => {
+    set({ catalogImporters: importers });
+    syncFromStore(get);
+  },
+
+  setCatalogMarks: (marks) => {
+    set({ catalogMarks: marks });
+    syncFromStore(get);
+  },
+
+  addCatalogImporter: (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const { catalogImporters } = get();
+    if (catalogImporters.includes(trimmed)) return trimmed;
+    set({ catalogImporters: [...catalogImporters, trimmed] });
+    syncFromStore(get);
+    return trimmed;
+  },
+
+  addCatalogMark: (mark) => {
+    const trimmed = mark.trim().toUpperCase();
+    if (!trimmed) return null;
+    const { catalogMarks } = get();
+    if (catalogMarks.includes(trimmed)) return trimmed;
+    set({ catalogMarks: [...catalogMarks, trimmed] });
+    syncFromStore(get);
+    return trimmed;
   },
 
   addProject: (name) => {
@@ -203,18 +262,20 @@ export const useStore = create<StoreState>()((set, get) => ({
   },
 
   addFloor: (projectId, name) => {
+    const newId = crypto.randomUUID();
     set((state) => ({
       projects: state.projects.map((p) =>
         p.id === projectId
           ? touchProject({
               ...p,
-              floors: [...p.floors, createFloor(name.trim(), p.floors.length)],
+              floors: [...p.floors, createFloor(name.trim(), p.floors.length, [], [], newId)],
             })
           : p
       ),
     }));
     const updated = get().projects.find((p) => p.id === projectId);
     if (updated) syncProject(updated);
+    return newId;
   },
 
   deleteFloor: (projectId, floorId) => {
@@ -371,16 +432,14 @@ export const useStore = create<StoreState>()((set, get) => ({
     set((state) => ({
       itemHistory: upsertItemHistory(state.itemHistory, data),
     }));
-    const { presetRooms, itemHistory } = get();
-    syncSettings(presetRooms, itemHistory);
+    syncFromStore(get);
   },
 
   removeItemTemplate: (id) => {
     set((state) => ({
       itemHistory: state.itemHistory.filter((h) => h.id !== id),
     }));
-    const { presetRooms, itemHistory } = get();
-    syncSettings(presetRooms, itemHistory);
+    syncFromStore(get);
   },
 }));
 

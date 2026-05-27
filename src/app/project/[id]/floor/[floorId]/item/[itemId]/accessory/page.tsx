@@ -284,7 +284,7 @@ function AccessoryFormContent() {
                       <option value="מטר">מטר</option>
                     </NativeSelect>
                   </F>
-                  <F label="מחיר ליחידה (₪)">
+                  <F label="מחיר ליחידה לפני מע״מ (₪)">
                     <Input type="number" min={0} value={pricePerUnit}
                       onChange={(e) => setPricePerUnit(Number(e.target.value))}
                       className="h-11 text-base font-semibold" />
@@ -326,7 +326,8 @@ function AccessoryFormContent() {
                     <div className="flex items-center gap-5 bg-secondary rounded-xl px-4 py-3 text-sm">
                       <span className="flex items-center gap-1.5 text-muted-foreground">
                         <Package className="w-4 h-4" />
-                        <strong className="text-foreground">{totalUnitsPreview}</strong> יחידות
+                        <strong className="text-foreground">{totalUnitsPreview}</strong>{" "}
+                        {unitType === "מטר" ? "מ'" : "יח'"}
                       </span>
                       {pricePerUnit > 0 && (
                         <span className="font-bold text-amber-600">₪{(totalUnitsPreview * pricePerUnit).toLocaleString()}</span>
@@ -403,7 +404,11 @@ function AccessoryFormContent() {
                     <div className="grid grid-cols-2 gap-2">
                       <SpecBadge icon={Thermometer} label="טמפ׳ צבע" value={scraped.color_temp_k ? `${scraped.color_temp_k}K` : null} />
                       <SpecBadge icon={Sun} label="CRI" value={scraped.cri} />
-                      <SpecBadge icon={Zap} label="וואט/יחידה" value={scraped.watt_per_unit ? `${scraped.watt_per_unit}W` : null} />
+                      <SpecBadge
+                        icon={Zap}
+                        label={unitType === "מטר" ? "וואט/מ'" : "וואט/יח'"}
+                        value={scraped.watt_per_unit ? `${scraped.watt_per_unit}W` : null}
+                      />
                       <SpecBadge icon={Gauge} label="מתח" value={scraped.voltage} />
                       <SpecBadge icon={Bolt} label="זרם" value={scraped.current} />
                       <SpecBadge icon={Maximize2} label="גובה תקרה מקס׳" value={scraped.max_ceiling_height_cm ? `${scraped.max_ceiling_height_cm} ס״מ` : null} />

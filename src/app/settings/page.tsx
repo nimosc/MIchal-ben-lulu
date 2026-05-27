@@ -1,39 +1,14 @@
 ﻿"use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/store/useStore";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  GripVertical,
-  Plus,
-  Trash2,
-  ChevronRight,
-  Settings,
-  RotateCcw,
-  Pencil,
-  Check,
-  X,
-} from "lucide-react";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { ChevronRight, Settings, Type, Truck, Home, Presentation } from "lucide-react";
 import { CatalogTemplateSettings } from "@/components/CatalogTemplateSettings";
+import { EditableStringList } from "@/components/EditableStringList";
+import { DEFAULT_CATALOG_IMPORTERS } from "@/lib/catalogImporters";
+import { DEFAULT_CATALOG_MARKS } from "@/lib/catalogMarks";
+import { cn } from "@/lib/utils";
 
 const DEFAULT_PRESET_ROOMS = [
   "מטבח",
@@ -52,153 +27,52 @@ const DEFAULT_PRESET_ROOMS = [
   "חדר רחצה מאסטר",
 ];
 
-function SortablePreset({
-  id,
-  name,
-  onDelete,
-  onRename,
-}: {
-  id: string;
-  name: string;
-  onDelete: () => void;
-  onRename: (newName: string) => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id });
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(name);
+const TABS = [
+  { id: "marks", label: "אותיות סימון", icon: Type },
+  { id: "importers", label: "יבואנים", icon: Truck },
+  { id: "rooms", label: "חדרים מהירים", icon: Home },
+  { id: "presentation", label: "מצגת קטלוג", icon: Presentation },
+] as const;
 
-  const commitEdit = () => {
-    const trimmed = draft.trim();
-    if (trimmed && trimmed !== name) onRename(trimmed);
-    else setDraft(name);
-    setEditing(false);
-  };
+type SettingsTab = (typeof TABS)[number]["id"];
 
-  const cancelEdit = () => {
-    setDraft(name);
-    setEditing(false);
-  };
-
-  return (
-    <li
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.5 : 1,
-      }}
-      className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3 shadow-sm group hover:border-amber-200 transition-colors"
-    >
-      <button
-        {...attributes}
-        {...listeners}
-        className="text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing transition-colors"
-      >
-        <GripVertical className="w-4 h-4" />
-      </button>
-
-      {editing ? (
-        <>
-          <input
-            autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitEdit();
-              if (e.key === "Escape") cancelEdit();
-            }}
-            className="flex-1 text-sm font-medium bg-transparent border-b border-amber-400 outline-none py-0.5 text-foreground"
-          />
-          <button
-            onClick={commitEdit}
-            className="text-amber-500 hover:text-amber-600 p-1 rounded-lg hover:bg-amber-50 transition-colors"
-          >
-            <Check className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={cancelEdit}
-            className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-secondary transition-colors"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </>
-      ) : (
-        <>
-          <span
-            className="flex-1 font-medium text-foreground text-sm cursor-pointer"
-            onDoubleClick={() => setEditing(true)}
-          >
-            {name}
-          </span>
-          <button
-            onClick={() => setEditing(true)}
-            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-amber-500 transition-all p-1 rounded-lg hover:bg-amber-50"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={onDelete}
-            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-all p-1 rounded-lg hover:bg-red-50"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </>
-      )}
-    </li>
-  );
+function isSettingsTab(value: string | null): value is SettingsTab {
+  return TABS.some((t) => t.id === value);
 }
 
-export default function SettingsPage() {
+function SettingsPageContent() {
   const router = useRouter();
-  const { presetRooms, setPresetRooms } = useStore();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const initialTab: SettingsTab = isSettingsTab(tabParam) ? tabParam : "marks";
 
+  const {
+    presetRooms,
+    catalogImporters,
+    catalogMarks,
+    setPresetRooms,
+    setCatalogImporters,
+    setCatalogMarks,
+  } = useStore();
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const [rooms, setRooms] = useState<string[]>(presetRooms);
-  const [newRoom, setNewRoom] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [importers, setImporters] = useState<string[]>(catalogImporters);
+  const [marks, setMarks] = useState<string[]>(catalogMarks);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
+  useEffect(() => {
+    setRooms(presetRooms);
+    setImporters(catalogImporters);
+    setMarks(catalogMarks);
+  }, [presetRooms, catalogImporters, catalogMarks]);
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      setRooms((prev) => {
-        const oldIndex = prev.findIndex((_, i) => `${i}` === String(active.id));
-        const newIndex = prev.findIndex((_, i) => `${i}` === String(over.id));
-        if (oldIndex === -1 || newIndex === -1) return prev;
-        return arrayMove(prev, oldIndex, newIndex);
-      });
-    }
-  };
+  useEffect(() => {
+    if (isSettingsTab(tabParam)) setActiveTab(tabParam);
+  }, [tabParam]);
 
-  const addRoom = () => {
-    const name = newRoom.trim();
-    if (!name || rooms.includes(name)) return;
-    setRooms((prev) => [...prev, name]);
-    setNewRoom("");
-  };
-
-  const deleteRoom = (index: number) => {
-    setRooms((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const renameRoom = (index: number, newName: string) => {
-    setRooms((prev) => prev.map((r, i) => (i === index ? newName : r)));
-  };
-
-  const handleSave = () => {
-    setPresetRooms(rooms);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  const handleReset = () => {
-    if (confirm("לאפס לרשימת ברירת המחדל?")) {
-      setRooms(DEFAULT_PRESET_ROOMS);
-    }
+  const selectTab = (tab: SettingsTab) => {
+    setActiveTab(tab);
+    router.replace(`/settings?tab=${tab}`, { scroll: false });
   };
 
   return (
@@ -219,91 +93,111 @@ export default function SettingsPage() {
             <section>
               <h1 className="text-xl font-bold text-foreground">הגדרות</h1>
               <p className="text-sm text-muted-foreground">
-                חדרים מהירים, תבנית מצגת קטלוג ושדות ייצוא
+                ניהול רשימות מפרט, חדרים ותבנית מצגת
               </p>
             </section>
           </section>
         </section>
       </header>
 
-      <section className="max-w-3xl mx-auto px-6 py-8 space-y-8">
-        <CatalogTemplateSettings />
-
-        <section className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-          <header className="px-6 py-4 border-b border-border flex items-center justify-between">
-            <section>
-              <h2 className="font-semibold text-foreground">חדרים מהירים</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                אלו החדרים שיופיעו כאפשרות הוספה מהירה בכל פרויקט
-              </p>
-            </section>
-            <section className="flex items-center gap-2">
-              <span className="tag-amber">{rooms.length} חדרים</span>
-              <button
-                onClick={handleReset}
-                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-secondary transition-colors"
-              >
-                <RotateCcw className="w-3 h-3" />
-                איפוס
-              </button>
-            </section>
-          </header>
-
-          <section className="p-6 space-y-4">
-            <section className="flex gap-2">
-              <Input
-                placeholder="שם חדר חדש..."
-                value={newRoom}
-                onChange={(e) => setNewRoom(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addRoom()}
-                className="flex-1 h-10"
-              />
-              <Button
-                onClick={addRoom}
-                size="sm"
-                className="bg-amber-500 hover:bg-amber-600 text-white border-0 h-10 px-4 gap-1.5"
-              >
-                <Plus className="w-4 h-4" />
-                הוסף
-              </Button>
-            </section>
-
-            {rooms.length === 0 ? (
-              <p className="text-center text-sm text-muted-foreground py-8">אין חדרים ברשימה</p>
-            ) : (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={rooms.map((_, i) => `${i}`)}
-                  strategy={verticalListSortingStrategy}
+      <nav className="border-b border-border bg-card/80 sticky top-14 z-10 backdrop-blur-sm">
+        <section className="max-w-3xl mx-auto px-6">
+          <div
+            role="tablist"
+            aria-label="קטגוריות הגדרות"
+            className="flex gap-1 overflow-x-auto py-2 -mx-1 px-1 scrollbar-none"
+          >
+            {TABS.map(({ id, label, icon: Icon }) => {
+              const selected = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => selectTab(id)}
+                  className={cn(
+                    "flex items-center gap-2 shrink-0 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap",
+                    selected
+                      ? "bg-amber-500 text-white shadow-sm"
+                      : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  )}
                 >
-                  <ul className="space-y-2">
-                    {rooms.map((name, index) => (
-                      <SortablePreset
-                        key={`${index}-${name}`}
-                        id={`${index}`}
-                        name={name}
-                        onDelete={() => deleteRoom(index)}
-                        onRename={(newName) => renameRoom(index, newName)}
-                      />
-                    ))}
-                  </ul>
-                </SortableContext>
-              </DndContext>
-            )}
-
-            <Button
-              onClick={handleSave}
-              className="w-full h-11 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl mt-2"
-            >
-              {saved ? "נשמר!" : "שמור שינויים"}
-            </Button>
-          </section>
+                  <Icon className="w-4 h-4" />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         </section>
+      </nav>
+
+      <section className="max-w-3xl mx-auto px-6 py-8">
+        <p className="text-xs text-muted-foreground mb-6">
+          שינויים משפיעים על כל הפרויקטים. אחרי עריכה לחץ «שמור שינויים» בכל טאב.
+        </p>
+
+        {activeTab === "marks" && (
+          <div role="tabpanel">
+            <EditableStringList
+              title="אותיות סימון"
+              description="הסימונים שמופיעים בשדה «סימון» (D, DW, C...)"
+              items={marks}
+              onItemsChange={setMarks}
+              newItemPlaceholder="סימון חדש — למשל: D7"
+              badgeLabel="סימונים"
+              onSave={() => setCatalogMarks(marks)}
+              onReset={() => setMarks([...DEFAULT_CATALOG_MARKS])}
+              normalizeNewItem={(v) => v.toUpperCase()}
+              mono
+            />
+          </div>
+        )}
+
+        {activeTab === "importers" && (
+          <div role="tabpanel">
+            <EditableStringList
+              title="יבואנים"
+              description="רשימת היבואנים לבחירה במפרט הידני"
+              items={importers}
+              onItemsChange={setImporters}
+              newItemPlaceholder="שם יבואן חדש..."
+              badgeLabel="יבואנים"
+              onSave={() => setCatalogImporters(importers)}
+              onReset={() => setImporters([...DEFAULT_CATALOG_IMPORTERS])}
+            />
+          </div>
+        )}
+
+        {activeTab === "rooms" && (
+          <div role="tabpanel">
+            <EditableStringList
+              title="חדרים מהירים"
+              description="חדרים להוספה מהירה בהגדרת קומה"
+              items={rooms}
+              onItemsChange={setRooms}
+              newItemPlaceholder="שם חדר חדש..."
+              badgeLabel="חדרים"
+              onSave={() => setPresetRooms(rooms)}
+              onReset={() => setRooms(DEFAULT_PRESET_ROOMS)}
+            />
+          </div>
+        )}
+
+        {activeTab === "presentation" && (
+          <div role="tabpanel">
+            <CatalogTemplateSettings />
+          </div>
+        )}
       </section>
     </section>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-[calc(100vh-56px)] bg-background" dir="rtl" />}>
+      <SettingsPageContent />
+    </Suspense>
   );
 }

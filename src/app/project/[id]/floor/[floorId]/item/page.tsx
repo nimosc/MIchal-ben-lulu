@@ -8,8 +8,9 @@ import { HistoryPickerPanel } from "@/components/HistoryPickerPanel";
 import { ProductDocumentLinks } from "@/components/ProductDocumentLinks";
 import { filterItemHistory, lightingItemToTemplate } from "@/lib/itemHistory";
 import { CatalogSpecEditor } from "@/components/CatalogSpecEditor";
-import { CATALOG_IMPORTERS } from "@/lib/catalogImporters";
-import { CATALOG_MARKS, DEFAULT_CATALOG_MARK } from "@/lib/catalogMarks";
+import { ImporterField } from "@/components/ImporterField";
+import { DEFAULT_CATALOG_MARK } from "@/lib/catalogMarks";
+import { MarkField } from "@/components/MarkField";
 import {
   formatLumens,
   mergeVariantIntoScraped,
@@ -628,20 +629,7 @@ function ItemFormContent() {
                         onChange={(e) => setSectionId(Number(e.target.value))}
                         className="h-11 text-lg font-bold text-center" />
                     </F>
-                    <F label="סימון">
-                      <NativeSelect
-                        value={mark}
-                        onChange={(e) => setMark(e.target.value)}
-                        className="text-lg font-bold text-center"
-                      >
-                        {CATALOG_MARKS.map((m) => (
-                          <option key={m} value={m}>{m}</option>
-                        ))}
-                        {!CATALOG_MARKS.includes(mark as (typeof CATALOG_MARKS)[number]) && (
-                          <option value={mark}>{mark}</option>
-                        )}
-                      </NativeSelect>
-                    </F>
+                    <MarkField value={mark} onChange={setMark} />
                   </div>
                 </SectionBox>
               </div>
@@ -792,22 +780,12 @@ function ItemFormContent() {
                       <option value="מטר">מטר</option>
                     </NativeSelect>
                   </F>
-                  <F label="מחיר ליחידה (₪)">
+                  <F label="מחיר ליחידה לפני מע״מ (₪)">
                     <Input type="number" min={0} value={pricePerUnit}
                       onChange={(e) => setPricePerUnit(Number(e.target.value))}
                       className="h-11 text-base font-semibold" />
                   </F>
-                  <F label="יבואן">
-                    <NativeSelect value={importer} onChange={(e) => setImporter(e.target.value)}>
-                      <option value="">—</option>
-                      {CATALOG_IMPORTERS.map((name) => (
-                        <option key={name} value={name}>{name}</option>
-                      ))}
-                      {importer && !CATALOG_IMPORTERS.includes(importer as (typeof CATALOG_IMPORTERS)[number]) && (
-                        <option value={importer}>{importer}</option>
-                      )}
-                    </NativeSelect>
-                  </F>
+                  <ImporterField value={importer} onChange={setImporter} />
                 </div>
               </SectionBox>
             </div>
@@ -845,7 +823,8 @@ function ItemFormContent() {
                     <div className="flex items-center gap-5 bg-secondary rounded-xl px-4 py-3 text-sm">
                       <span className="flex items-center gap-1.5 text-muted-foreground">
                         <Package className="w-4 h-4" />
-                        <strong className="text-foreground">{totalUnitsPreview}</strong> יחידות
+                        <strong className="text-foreground">{totalUnitsPreview}</strong>{" "}
+                        {unitType === "מטר" ? "מ'" : "יח'"}
                       </span>
                       {pricePerUnit > 0 && (
                         <span className="font-bold text-amber-600">₪{(totalUnitsPreview * pricePerUnit).toLocaleString()}</span>
@@ -1041,7 +1020,11 @@ function ItemFormContent() {
                     <div className="grid grid-cols-2 gap-2">
                       <SpecBadge icon={Thermometer} label="טמפ׳ צבע" value={scraped.color_temp_k ? `${scraped.color_temp_k}K` : null} />
                       <SpecBadge icon={Sun} label="CRI" value={scraped.cri} />
-                      <SpecBadge icon={Zap} label="וואט/יחידה" value={scraped.watt_per_unit ? `${scraped.watt_per_unit}W` : null} />
+                      <SpecBadge
+                        icon={Zap}
+                        label={unitType === "מטר" ? "וואט/מ'" : "וואט/יח'"}
+                        value={scraped.watt_per_unit ? `${scraped.watt_per_unit}W` : null}
+                      />
                       <SpecBadge icon={Gauge} label="מתח" value={scraped.voltage} />
                       <SpecBadge icon={Bolt} label="זרם" value={scraped.current} />
                       <SpecBadge icon={Maximize2} label="גובה תקרה מקס׳" value={scraped.max_ceiling_height_cm ? `${scraped.max_ceiling_height_cm} ס״מ` : null} />

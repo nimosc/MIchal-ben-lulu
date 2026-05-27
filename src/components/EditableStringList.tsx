@@ -1,0 +1,283 @@
+"use client";
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  GripVertical,
+  Plus,
+  Trash2,
+  RotateCcw,
+  Pencil,
+  Check,
+  X,
+} from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
+function SortableRow({
+  id,
+  name,
+  onDelete,
+  onRename,
+}: {
+  id: string;
+  name: string;
+  onDelete: () => void;
+  onRename: (newName: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+
+  const commitEdit = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== name) onRename(trimmed);
+    else setDraft(name);
+    setEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setDraft(name);
+    setEditing(false);
+  };
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+      }}
+      className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3 shadow-sm group hover:border-amber-200 transition-colors"
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing transition-colors"
+      >
+        <GripVertical className="w-4 h-4" />
+      </button>
+
+      {editing ? (
+        <>
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit();
+              if (e.key === "Escape") cancelEdit();
+            }}
+            className="flex-1 text-sm font-medium bg-transparent border-b border-amber-400 outline-none py-0.5 text-foreground"
+          />
+          <button
+            type="button"
+            onClick={commitEdit}
+            className="text-amber-500 hover:text-amber-600 p-1 rounded-lg hover:bg-amber-50 transition-colors"
+          >
+            <Check className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={cancelEdit}
+            className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-secondary transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </>
+      ) : (
+        <>
+          <span
+            className="flex-1 font-medium text-foreground text-sm cursor-pointer font-mono"
+            onDoubleClick={() => setEditing(true)}
+          >
+            {name}
+          </span>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-muted-foreground hover:text-amber-600 transition-all p-1 rounded-lg hover:bg-amber-50"
+            title="ערוך"
+            aria-label="ערוך"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="text-muted-foreground hover:text-red-500 transition-all p-1 rounded-lg hover:bg-red-50"
+            title="מחק"
+            aria-label="מחק"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </>
+      )}
+    </li>
+  );
+}
+
+export function EditableStringList({
+  title,
+  description,
+  items,
+  onItemsChange,
+  newItemPlaceholder,
+  badgeLabel,
+  onSave,
+  onReset,
+  mono = false,
+  normalizeNewItem,
+}: {
+  title: string;
+  description: string;
+  items: string[];
+  onItemsChange: (items: string[]) => void;
+  newItemPlaceholder: string;
+  badgeLabel: string;
+  onSave: () => void;
+  onReset?: () => void;
+  mono?: boolean;
+  normalizeNewItem?: (value: string) => string;
+}) {
+  const [newItem, setNewItem] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      onItemsChange(
+        (() => {
+          const oldIndex = items.findIndex((_, i) => `${i}` === String(active.id));
+          const newIndex = items.findIndex((_, i) => `${i}` === String(over.id));
+          if (oldIndex === -1 || newIndex === -1) return items;
+          return arrayMove(items, oldIndex, newIndex);
+        })()
+      );
+    }
+  };
+
+  const addItem = () => {
+    const raw = newItem.trim();
+    if (!raw) return;
+    const name = normalizeNewItem ? normalizeNewItem(raw) : raw;
+    if (!name || items.includes(name)) return;
+    onItemsChange([...items, name]);
+    setNewItem("");
+  };
+
+  const handleSave = () => {
+    onSave();
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <section className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+      <header className="px-6 py-4 border-b border-border flex items-center justify-between">
+        <section>
+          <h2 className="font-semibold text-foreground">{title}</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+          <p className="text-xs text-amber-700/80 mt-1">
+            לעריכה: לחץ על העיפרון או דאבל-קליק על הפריט · גרור לשינוי סדר
+          </p>
+        </section>
+        <section className="flex items-center gap-2">
+          <span className="tag-amber">
+            {items.length} {badgeLabel}
+          </span>
+          {onReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-secondary transition-colors"
+            >
+              <RotateCcw className="w-3 h-3" />
+              איפוס
+            </button>
+          )}
+        </section>
+      </header>
+
+      <section className="p-6 space-y-4">
+        <section className="flex gap-2">
+          <Input
+            placeholder={newItemPlaceholder}
+            value={newItem}
+            onChange={(e) => setNewItem(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addItem()}
+            className={`flex-1 h-10 ${mono ? "font-mono" : ""}`}
+          />
+          <Button
+            type="button"
+            onClick={addItem}
+            size="sm"
+            className="bg-amber-500 hover:bg-amber-600 text-white border-0 h-10 px-4 gap-1.5"
+          >
+            <Plus className="w-4 h-4" />
+            הוסף
+          </Button>
+        </section>
+
+        {items.length === 0 ? (
+          <p className="text-center text-sm text-muted-foreground py-8">אין פריטים ברשימה</p>
+        ) : (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={items.map((_, i) => `${i}`)} strategy={verticalListSortingStrategy}>
+              <ul className="space-y-2">
+                {items.map((name, index) => (
+                  <SortableRow
+                    key={`${index}-${name}`}
+                    id={`${index}`}
+                    name={name}
+                    onDelete={() => onItemsChange(items.filter((_, i) => i !== index))}
+                    onRename={(newName) => {
+                      const normalized = normalizeNewItem
+                        ? normalizeNewItem(newName.trim())
+                        : newName.trim();
+                      if (!normalized) return;
+                      if (items.includes(normalized) && items[index] !== normalized) return;
+                      onItemsChange(items.map((r, i) => (i === index ? normalized : r)));
+                    }}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
+        )}
+
+        <Button
+          type="button"
+          onClick={handleSave}
+          className="w-full h-11 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl mt-2"
+        >
+          {saved ? "נשמר!" : "שמור שינויים"}
+        </Button>
+      </section>
+    </section>
+  );
+}

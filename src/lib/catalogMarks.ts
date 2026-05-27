@@ -1,5 +1,5 @@
-/** סימוני גוף תאורה — רשימה זמנית לפי PDF ההסבר; תורחב כשתתקבל רשימה סופית */
-export const CATALOG_MARKS = [
+/** סימוני גוף תאורה — רשימת ברירת מחדל */
+export const DEFAULT_CATALOG_MARKS = [
   "D",
   "D1",
   "D2",
@@ -34,6 +34,7 @@ export const CATALOG_MARKS = [
   "C5",
 ] as const;
 
-export type CatalogMark = (typeof CATALOG_MARKS)[number];
+/** @deprecated השתמש ב-store.catalogMarks */
+export const CATALOG_MARKS = DEFAULT_CATALOG_MARKS;
 
-export const DEFAULT_CATALOG_MARK: CatalogMark = "D";
+export const DEFAULT_CATALOG_MARK = "D";

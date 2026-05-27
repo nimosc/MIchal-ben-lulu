@@ -15,6 +15,9 @@ import {
   Settings,
   FileDown,
   ArrowRight,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import {
   Dialog,
@@ -30,7 +33,7 @@ export default function ProjectFloorsPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
-  const { projects, addFloor, deleteFloor } = useStore();
+  const { projects, addFloor, deleteFloor, updateFloor } = useStore();
   const project = projects.find((p) => p.id === projectId);
 
   const [newFloorName, setNewFloorName] = useState("");
@@ -38,6 +41,8 @@ export default function ProjectFloorsPage() {
   const [exporting, setExporting] = useState(false);
   const [deleteFloorTarget, setDeleteFloorTarget] = useState<{ id: string; name: string } | null>(null);
   const [lastFloorAlert, setLastFloorAlert] = useState(false);
+  const [renameFloorTarget, setRenameFloorTarget] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
 
   if (!project) {
     return (
@@ -63,9 +68,27 @@ export default function ProjectFloorsPage() {
   const handleAddFloor = () => {
     const name = newFloorName.trim();
     if (!name) return;
-    addFloor(projectId, name);
+    const newFloorId = addFloor(projectId, name);
     setNewFloorName("");
     setAdding(false);
+    router.push(`/project/${projectId}/floor/${newFloorId}/setup?addRoom=1`);
+  };
+
+  const startRenameFloor = (floorId: string, currentName: string) => {
+    setRenameFloorTarget(floorId);
+    setRenameDraft(currentName);
+  };
+
+  const cancelRenameFloor = () => {
+    setRenameFloorTarget(null);
+    setRenameDraft("");
+  };
+
+  const commitRenameFloor = (floorId: string) => {
+    const trimmed = renameDraft.trim();
+    if (!trimmed) return;
+    updateFloor(projectId, floorId, { name: trimmed });
+    cancelRenameFloor();
   };
 
   return (
@@ -168,7 +191,10 @@ export default function ProjectFloorsPage() {
                 key={name}
                 type="button"
                 disabled={exists}
-                onClick={() => addFloor(projectId, name)}
+                onClick={() => {
+                  const newFloorId = addFloor(projectId, name);
+                  router.push(`/project/${projectId}/floor/${newFloorId}/setup?addRoom=1`);
+                }}
                 className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
                   exists
                     ? "bg-amber-50 border-amber-200 text-amber-400 cursor-default"
@@ -203,9 +229,49 @@ export default function ProjectFloorsPage() {
                     <div className="p-5">
                       <div className="flex items-start justify-between mb-4">
                         <div className="min-w-0 flex-1">
-                          <h3 className="font-bold text-lg text-foreground group-hover:text-amber-600 transition-colors truncate">
-                            {floor.name}
-                          </h3>
+                          {renameFloorTarget === floor.id ? (
+                            <div
+                              className="flex items-center gap-2"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Input
+                                value={renameDraft}
+                                onChange={(e) => setRenameDraft(e.target.value)}
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") commitRenameFloor(floor.id);
+                                  if (e.key === "Escape") cancelRenameFloor();
+                                }}
+                                className="h-8 text-sm font-semibold w-48"
+                              />
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  commitRenameFloor(floor.id);
+                                }}
+                                className="p-2 rounded-lg text-emerald-700 hover:bg-emerald-50 transition-colors"
+                                aria-label="שמור שם קומה"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cancelRenameFloor();
+                                }}
+                                className="p-2 rounded-lg text-muted-foreground hover:bg-secondary transition-colors"
+                                aria-label="ביטול עריכת שם קומה"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <h3 className="font-bold text-lg text-foreground group-hover:text-amber-600 transition-colors truncate">
+                              {floor.name}
+                            </h3>
+                          )}
                           <p className="text-xs text-muted-foreground mt-0.5">
                             {ft.itemCount} גופים · {floor.rooms.length} חדרים
                           </p>
@@ -225,6 +291,17 @@ export default function ProjectFloorsPage() {
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startRenameFloor(floor.id, floor.name);
+                          }}
+                          className="text-muted-foreground/40 group-hover:text-muted-foreground hover:text-amber-600 transition-all p-2 rounded-lg hover:bg-secondary shrink-0"
+                          aria-label="עריכת שם קומה"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 mb-4">
@@ -233,7 +310,7 @@ export default function ProjectFloorsPage() {
                           <p className="text-lg font-bold">{ft.totalUnits}</p>
                         </div>
                         <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
-                          <p className="text-xs text-amber-600">מחיר</p>
+                          <p className="text-xs text-amber-600">מחיר לפני מע״מ</p>
                           <p className="text-lg font-bold text-amber-700">₪{ft.totalPrice.toLocaleString()}</p>
                         </div>
                       </div>
@@ -272,7 +349,7 @@ export default function ProjectFloorsPage() {
               יחידות: <strong className="text-foreground">{totals.totalUnits}</strong>
             </span>
             <span>
-              מחיר: <strong className="text-amber-600">₪{totals.totalPrice.toLocaleString()}</strong>
+              מחיר לפני מע״מ: <strong className="text-amber-600">₪{totals.totalPrice.toLocaleString()}</strong>
             </span>
           </div>
         )}
