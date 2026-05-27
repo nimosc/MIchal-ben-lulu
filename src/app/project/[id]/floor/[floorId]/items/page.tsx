@@ -331,10 +331,22 @@ export default function FloorItemsPage() {
                     const { totalUnits, totalPriceExVat, totalWatt } = itemTotals;
                     const accessories = item.accessories ?? [];
                     const isExpanded = expandedItems.has(item.id);
+                    const openItemEdit = () =>
+                      router.push(`/project/${projectId}/floor/${floorId}/item?edit=${item.id}`);
+
                     return (
                       <Fragment key={item.id}>
                       <tr
-                        className={`hover:bg-secondary/40 transition-colors ${idx % 2 !== 0 ? "bg-secondary/20" : ""}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={openItemEdit}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openItemEdit();
+                          }
+                        }}
+                        className={`cursor-pointer hover:bg-secondary/40 transition-colors ${idx % 2 !== 0 ? "bg-secondary/20" : ""}`}
                       >
                         <td className="px-4 py-3.5">
                           <span className="font-mono text-xs bg-secondary px-2 py-0.5 rounded-md">{item.section_id}</span>
@@ -353,7 +365,13 @@ export default function FloorItemsPage() {
                           ) : (
                             <span className="text-muted-foreground text-xs">
                               {item.product_url ? (
-                                <a href={item.product_url} target="_blank" rel="noopener noreferrer" className="underline decoration-dashed truncate block max-w-[180px] hover:text-foreground transition-colors">
+                                <a
+                                  href={item.product_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="underline decoration-dashed truncate block max-w-[180px] hover:text-foreground transition-colors"
+                                >
                                   {item.product_url}
                                 </a>
                               ) : "—"}
@@ -395,7 +413,10 @@ export default function FloorItemsPage() {
                         <td className="px-4 py-3.5">
                           <div className="flex gap-1 justify-end">
                             <button
-                              onClick={() => toggleExpand(item.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleExpand(item.id);
+                              }}
                               title="אביזרים"
                               className={`p-2 min-w-[36px] min-h-[36px] rounded-lg transition-colors flex items-center justify-center ${accessories.length > 0 ? "text-amber-500 hover:bg-amber-50" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}
                             >
@@ -408,14 +429,24 @@ export default function FloorItemsPage() {
                               </div>
                             </button>
                             <button
-                              onClick={() => router.push(`/project/${projectId}/floor/${floorId}/item?edit=${item.id}`)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openItemEdit();
+                              }}
                               className="p-2 min-w-[36px] min-h-[36px] rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors flex items-center justify-center"
                               aria-label="ערוך גוף"
                             >
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => setPendingDelete({ type: "item", itemId: item.id, label: item.scraped?.product_name || item.body_description || item.mark })}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingDelete({
+                                  type: "item",
+                                  itemId: item.id,
+                                  label: item.scraped?.product_name || item.body_description || item.mark,
+                                });
+                              }}
                               className="p-2 min-w-[36px] min-h-[36px] rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors flex items-center justify-center"
                               aria-label="מחק גוף"
                             >
