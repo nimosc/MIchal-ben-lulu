@@ -295,7 +295,7 @@ async function toPptxSafeImage(
         : normalized === "svg"
           ? "image/svg+xml"
           : `image/${normalized}`;
-    const blob = new Blob([data], { type: mime });
+    const blob = new Blob([new Uint8Array(data)], { type: mime });
     const bitmap = await createImageBitmap(blob);
     const canvas = document.createElement("canvas");
     canvas.width = bitmap.width;
