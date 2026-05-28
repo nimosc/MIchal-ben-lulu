@@ -1,10 +1,15 @@
 import type { Accessory, Floor, LightingItem, Project, ScrapedData } from "@/types";
 import { formatCatalogRoomNames } from "@/lib/catalogPresentation";
 import { calcItemTotals } from "@/lib/project";
-import { formatLumens, formatVoltageCurrent } from "@/lib/scrapedData";
+import {
+  formatLumens,
+  formatVoltageCurrent,
+  resolveSelectedImageUrls,
+} from "@/lib/scrapedData";
 
 export interface CatalogSlideContext {
   projectName: string;
+  floorName: string;
   mark: string;
   productUrl: string;
   roomNames: string;
@@ -39,6 +44,7 @@ export interface CatalogSlideContext {
   rosetteType: string;
   importer: string;
   imageUrl: string | null;
+  imageUrls: string[];
 }
 
 function bodyText(scraped: ScrapedData | null, fallback: string): string {
@@ -64,8 +70,11 @@ function buildFromScraped(
   const manufacturer = s?.manufacturer?.trim() || "";
   const voltageCurrent = formatVoltageCurrent(s?.voltage, s?.current);
 
+  const uniqueImageUrls = resolveSelectedImageUrls(s);
+
   return {
     projectName: "",
+    floorName: "",
     mark: extras.mark,
     productUrl: extras.productUrl?.trim() || "",
     roomNames: extras.roomNames,
@@ -99,11 +108,8 @@ function buildFromScraped(
     bodyHeight: s?.body_height?.trim() || "",
     rosetteType: s?.rosette_type?.trim() || "",
     importer: extras.importer || "",
-    imageUrl:
-      s?.selected_image_urls?.[0] ||
-      s?.main_image_url ||
-      s?.image_urls?.[0] ||
-      null,
+    imageUrl: uniqueImageUrls[0] ?? null,
+    imageUrls: uniqueImageUrls,
   };
 }
 
@@ -125,6 +131,7 @@ export function buildItemSlideContext(
     bodyDescription: item.body_description,
   });
   ctx.projectName = project.name;
+  ctx.floorName = floor.name;
   return ctx;
 }
 
@@ -151,6 +158,7 @@ export function buildAccessorySlideContext(
   const name = accessory.scraped?.product_name?.trim();
   if (name) ctx.productTitle = name.toUpperCase();
   ctx.projectName = project.name;
+  ctx.floorName = floor.name;
   return ctx;
 }
 
@@ -170,7 +178,7 @@ export function buildCoverSlideContext(project: Project, floor: Floor): CoverSli
   return {
     projectName: project.name,
     floorName: floor.name,
-    editionLine: `מהדורה  1     ${months[now.getMonth()]}`,
+    editionLine: `מהדורה 1 ${months[now.getMonth()]}`,
     year: String(now.getFullYear()),
   };
 }

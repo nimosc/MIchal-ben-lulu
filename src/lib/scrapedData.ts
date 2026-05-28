@@ -97,3 +97,17 @@ export function formatVoltageCurrent(
   const parts = [voltage?.trim(), current?.trim()].filter(Boolean);
   return parts.join(" / ");
 }
+
+/** תמונות לייצוא מצגת/קטלוג — רק נבחרות, או main אם לא נבחר כלום */
+export function resolveSelectedImageUrls(scraped: ScrapedData | null | undefined): string[] {
+  if (!scraped) return [];
+  const selected =
+    scraped.selected_image_urls?.map((u) => u.trim()).filter(Boolean) ?? [];
+  const urls = selected.length > 0 ? selected : scraped.main_image_url?.trim() ? [scraped.main_image_url.trim()] : [];
+  const seen = new Set<string>();
+  return urls.filter((u) => {
+    if (seen.has(u)) return false;
+    seen.add(u);
+    return true;
+  });
+}

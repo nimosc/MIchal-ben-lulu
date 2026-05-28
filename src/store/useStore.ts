@@ -153,43 +153,48 @@ export const useStore = create<StoreState>()((set, get) => ({
   isLoaded: false,
 
   initialize: async () => {
-    const [projectsResult, settingsResult] = await Promise.all([
-      supabase.from("projects").select("*").order("created_at"),
-      supabase.from("app_settings").select("value").eq("key", "global").maybeSingle(),
-    ]);
+    try {
+      const [projectsResult, settingsResult] = await Promise.all([
+        supabase.from("projects").select("*").order("created_at"),
+        supabase.from("app_settings").select("value").eq("key", "global").maybeSingle(),
+      ]);
 
-    if (projectsResult.error) {
-      console.error("[Supabase] load projects error:", projectsResult.error);
+      if (projectsResult.error) {
+        console.error("[Supabase] load projects error:", projectsResult.error);
+      }
+      if (settingsResult.error) {
+        console.error("[Supabase] load settings error:", settingsResult.error);
+      }
+
+      type Settings = Partial<AppSettingsPayload>;
+      const settings = settingsResult.data?.value as Settings | null;
+
+      // Migrate any legacy data in floors
+      const projects = (projectsResult.data ?? []).map((row) => {
+        const p = {
+          id: row.id,
+          name: row.name,
+          webhook_url: row.webhook_url,
+          floors: row.floors as Floor[],
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return migrateProject(p as any) as unknown as Project;
+      });
+
+      set({
+        projects,
+        presetRooms: settings?.presetRooms ?? defaultPresetRooms,
+        catalogImporters: loadSettingsList(settings?.catalogImporters, DEFAULT_CATALOG_IMPORTERS),
+        catalogMarks: loadSettingsList(settings?.catalogMarks, DEFAULT_CATALOG_MARKS),
+        itemHistory: settings?.itemHistory ?? [],
+        isLoaded: true,
+      });
+    } catch (err) {
+      console.error("[Store] initialize failed:", err);
+      set({ isLoaded: true });
     }
-    if (settingsResult.error) {
-      console.error("[Supabase] load settings error:", settingsResult.error);
-    }
-
-    type Settings = Partial<AppSettingsPayload>;
-    const settings = settingsResult.data?.value as Settings | null;
-
-    // Migrate any legacy data in floors
-    const projects = (projectsResult.data ?? []).map((row) => {
-      const p = {
-        id: row.id,
-        name: row.name,
-        webhook_url: row.webhook_url,
-        floors: row.floors as Floor[],
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-      };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return migrateProject(p as any) as unknown as Project;
-    });
-
-    set({
-      projects,
-      presetRooms: settings?.presetRooms ?? defaultPresetRooms,
-      catalogImporters: loadSettingsList(settings?.catalogImporters, DEFAULT_CATALOG_IMPORTERS),
-      catalogMarks: loadSettingsList(settings?.catalogMarks, DEFAULT_CATALOG_MARKS),
-      itemHistory: settings?.itemHistory ?? [],
-      isLoaded: true,
-    });
   },
 
   setPresetRooms: (rooms) => {

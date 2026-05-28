@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url");
   if (!url) {

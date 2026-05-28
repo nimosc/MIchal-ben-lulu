@@ -1,35 +1,52 @@
 import {
   clearCatalogTemplateOverride,
-  getCatalogTemplateMeta,
   getCatalogTemplateOverride,
+  getCatalogTemplatesMeta,
   saveCatalogTemplateOverride,
-  validateCatalogTemplate,
+  validateCatalogTemplateByKind,
   type CatalogTemplateMeta,
 } from "@/lib/catalogTemplateStorage";
+import {
+  CATALOG_TEMPLATE_CONFIG,
+  CATALOG_TEMPLATE_KINDS,
+  type CatalogTemplateKind,
+} from "@/lib/catalogTemplateTypes";
 
-export const DEFAULT_CATALOG_TEMPLATE_PATH = "/catalog-template.pptx";
-export const DEFAULT_CATALOG_TEMPLATE_FILENAME = "catalog-template.pptx";
+export type { CatalogTemplateKind, CatalogTemplateMeta };
 
-export async function loadCatalogTemplateBuffer(): Promise<ArrayBuffer> {
-  const override = await getCatalogTemplateOverride();
+export async function loadCatalogTemplateBuffer(kind: CatalogTemplateKind): Promise<ArrayBuffer> {
+  const override = await getCatalogTemplateOverride(kind);
   if (override) return override;
 
-  const res = await fetch(DEFAULT_CATALOG_TEMPLATE_PATH);
+  const { defaultPath } = CATALOG_TEMPLATE_CONFIG[kind];
+  const res = await fetch(defaultPath);
   if (!res.ok) {
     throw new Error(
-      "לא נמצאה תבנית מצגת (catalog-template.pptx). הרץ pack-catalog-template או העלה תבנית בהגדרות."
+      `לא נמצאה תבנית ${CATALOG_TEMPLATE_CONFIG[kind].label} (${CATALOG_TEMPLATE_CONFIG[kind].defaultFilename}). העלה קובץ בהגדרות.`
     );
   }
   return res.arrayBuffer();
 }
 
-export async function getActiveCatalogTemplateMeta(): Promise<{
-  source: "override" | "default";
-  meta: CatalogTemplateMeta | null;
+export async function loadAllCatalogTemplates(): Promise<
+  Record<CatalogTemplateKind, ArrayBuffer>
+> {
+  const entries = await Promise.all(
+    CATALOG_TEMPLATE_KINDS.map(async (kind) => [kind, await loadCatalogTemplateBuffer(kind)] as const)
+  );
+  return Object.fromEntries(entries) as Record<CatalogTemplateKind, ArrayBuffer>;
+}
+
+export async function getActiveCatalogTemplatesMeta(): Promise<{
+  sources: Partial<Record<CatalogTemplateKind, "override" | "default">>;
+  metas: Partial<Record<CatalogTemplateKind, CatalogTemplateMeta>>;
 }> {
-  const meta = await getCatalogTemplateMeta();
-  if (meta) return { source: "override", meta };
-  return { source: "default", meta: null };
+  const metas = await getCatalogTemplatesMeta();
+  const sources: Partial<Record<CatalogTemplateKind, "override" | "default">> = {};
+  for (const kind of CATALOG_TEMPLATE_KINDS) {
+    sources[kind] = metas[kind] ? "override" : "default";
+  }
+  return { sources, metas };
 }
 
 export function triggerBlobDownload(blob: Blob, filename: string): void {
@@ -37,17 +54,18 @@ export function triggerBlobDownload(blob: Blob, filename: string): void {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export async function downloadCatalogTemplate(): Promise<void> {
-  const buffer = await loadCatalogTemplateBuffer();
-  const { source, meta } = await getActiveCatalogTemplateMeta();
+export async function downloadCatalogTemplate(kind: CatalogTemplateKind): Promise<void> {
+  const buffer = await loadCatalogTemplateBuffer(kind);
+  const { metas } = await getActiveCatalogTemplatesMeta();
   const filename =
-    source === "override" && meta?.filename
-      ? meta.filename
-      : DEFAULT_CATALOG_TEMPLATE_FILENAME;
+    metas[kind]?.filename ?? CATALOG_TEMPLATE_CONFIG[kind].defaultFilename;
 
   triggerBlobDownload(
     new Blob([buffer], {
@@ -57,15 +75,19 @@ export async function downloadCatalogTemplate(): Promise<void> {
   );
 }
 
-export async function uploadCatalogTemplate(file: File): Promise<CatalogTemplateMeta> {
+export async function uploadCatalogTemplate(
+  kind: CatalogTemplateKind,
+  file: File
+): Promise<CatalogTemplateMeta> {
   const buffer = await file.arrayBuffer();
-  const valid = await validateCatalogTemplate(buffer);
+  const valid = await validateCatalogTemplateByKind(kind, buffer);
   if (!valid.ok) throw new Error(valid.error);
 
-  await saveCatalogTemplateOverride(buffer, file.name);
-  const meta = await getCatalogTemplateMeta();
-  if (!meta) throw new Error("שמירת התבנית נכשלה");
-  return meta;
+  return saveCatalogTemplateOverride(kind, buffer, file.name);
 }
 
-export { clearCatalogTemplateOverride, getCatalogTemplateMeta, validateCatalogTemplate };
+export {
+  clearCatalogTemplateOverride,
+  getCatalogTemplatesMeta,
+  validateCatalogTemplateByKind,
+};

@@ -28,6 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { SelectedImageThumbnails } from "@/components/SelectedImageThumbnails";
 
 export default function FloorItemsPage() {
   const params = useParams();
@@ -57,6 +58,16 @@ export default function FloorItemsPage() {
   };
 
   const items = floor?.items ?? [];
+  const sortedItems = useMemo(
+    () =>
+      [...items].sort((a, b) =>
+        (a.mark ?? "").trim().localeCompare((b.mark ?? "").trim(), "en", {
+          sensitivity: "base",
+          numeric: true,
+        })
+      ),
+    [items]
+  );
 
   const roomMap = useMemo(
     () => new Map((floor?.rooms ?? []).map((r) => [r.id, r.name])),
@@ -125,8 +136,8 @@ export default function FloorItemsPage() {
     setSendProgress(0);
     setSendStatus("");
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+    for (let i = 0; i < sortedItems.length; i++) {
+      const item = sortedItems[i];
       const { totalUnits, totalPriceExVat, totalWatt } = calcItemTotals(item);
       const payload = {
         project_name: project.name,
@@ -164,7 +175,7 @@ export default function FloorItemsPage() {
         totals: { total_units: totalUnits, total_price_ex_vat: totalPriceExVat, total_watt: totalWatt },
       };
 
-      setSendStatus(`שולח ${i + 1}/${items.length}: ${item.scraped?.product_name ?? (item.body_description || item.mark)}`);
+      setSendStatus(`שולח ${i + 1}/${sortedItems.length}: ${item.scraped?.product_name ?? (item.body_description || item.mark)}`);
       try {
         await fetch(project.webhook_url, {
           method: "POST",
@@ -174,11 +185,11 @@ export default function FloorItemsPage() {
         });
       } catch { /* no-cors may throw */ }
 
-      setSendProgress(Math.round(((i + 1) / items.length) * 100));
-      if (i < items.length - 1) await new Promise((r) => setTimeout(r, 300));
+      setSendProgress(Math.round(((i + 1) / sortedItems.length) * 100));
+      if (i < sortedItems.length - 1) await new Promise((r) => setTimeout(r, 300));
     }
 
-    setSendStatus(`נשלחו ${items.length} גופים בהצלחה ✓`);
+    setSendStatus(`נשלחו ${sortedItems.length} גופים בהצלחה ✓`);
     setTimeout(() => { setSending(false); setSendProgress(0); setSendStatus(""); }, 3000);
   };
 
@@ -316,6 +327,7 @@ export default function FloorItemsPage() {
                     <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">סעיף</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">סימון</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">מוצר</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground w-[120px]">תמונות</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">תיאור</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">חדרים</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">{unitColumnLabel}</th>
@@ -326,7 +338,7 @@ export default function FloorItemsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {items.map((item, idx) => {
+                  {sortedItems.map((item, idx) => {
                     const itemTotals = calcItemTotals(item);
                     const { totalUnits, totalPriceExVat, totalWatt } = itemTotals;
                     const accessories = item.accessories ?? [];
@@ -377,6 +389,9 @@ export default function FloorItemsPage() {
                               ) : "—"}
                             </span>
                           )}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <SelectedImageThumbnails scraped={item.scraped} max={3} />
                         </td>
                         <td className="px-4 py-3.5 text-muted-foreground max-w-[150px] truncate">
                           {item.body_description || "—"}
@@ -457,7 +472,7 @@ export default function FloorItemsPage() {
                       </tr>
                       {isExpanded && (
                         <tr key={`${item.id}-accessories`}>
-                          <td colSpan={10} className="px-0 py-0 bg-amber-50/40">
+                          <td colSpan={11} className="px-0 py-0 bg-amber-50/40">
                             <div className="px-6 py-3 border-t border-amber-100 space-y-1">
                               <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-semibold text-amber-700 flex items-center gap-1.5">
@@ -482,6 +497,7 @@ export default function FloorItemsPage() {
                                     const accLabel = acc.scraped?.product_name || acc.body_description || "אביזר";
                                     return (
                                       <div key={acc.id} className="flex items-center gap-3 bg-white border border-amber-100 rounded-xl px-3 py-2.5">
+                                        <SelectedImageThumbnails scraped={acc.scraped} max={2} />
                                         <div className="flex-1 min-w-0">
                                           <p className="text-sm font-medium text-foreground truncate">{accLabel}</p>
                                           {acc.scraped?.manufacturer && (

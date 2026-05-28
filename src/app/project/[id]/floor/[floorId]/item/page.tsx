@@ -15,6 +15,7 @@ import {
   formatLumens,
   mergeVariantIntoScraped,
   normalizeScraped,
+  resolveSelectedImageUrls,
 } from "@/lib/scrapedData";
 import { LightingItem, ProductVariant, SavedLightingTemplate, ScrapedData } from "@/types";
 import {
@@ -72,12 +73,6 @@ const AUX_EQUIPMENT_LOCATIONS = [
   "דרייבר/ספק כח מרוחק",
 ];
 
-function resolveSelectedImages(scraped: ScrapedData): string[] {
-  if (scraped.selected_image_urls?.length) return scraped.selected_image_urls;
-  if (scraped.main_image_url) return [scraped.main_image_url];
-  return [];
-}
-
 function VariantSpecBadge({
   children,
   className,
@@ -98,7 +93,7 @@ function VariantSpecBadge({
 }
 
 function toggleSelectedImage(scraped: ScrapedData, url: string): ScrapedData {
-  const current = resolveSelectedImages(scraped);
+  const current = resolveSelectedImageUrls(scraped);
   const next = current.includes(url)
     ? current.filter((u) => u !== url)
     : [...current, url];
@@ -321,14 +316,14 @@ function ItemFormContent() {
       !base.product_description && editItem?.body_description
         ? { ...base, product_description: editItem.body_description }
         : base;
-    const selected = resolveSelectedImages(withDesc);
+    const selected = resolveSelectedImageUrls(withDesc);
     return {
       ...withDesc,
       selected_image_urls: selected,
       main_image_url: selected[0] ?? withDesc.main_image_url,
     };
   });
-  const selectedImages = resolveSelectedImages(scraped);
+  const selectedImages = resolveSelectedImageUrls(scraped);
   const galleryUrls = useMemo(() => galleryImageUrls(scraped), [scraped]);
   const [customImageUrl, setCustomImageUrl] = useState("");
   const [customImageError, setCustomImageError] = useState("");
@@ -446,7 +441,7 @@ function ItemFormContent() {
       !base.product_description && t.body_description
         ? { ...base, product_description: t.body_description }
         : base;
-    const selected = resolveSelectedImages(withDesc);
+    const selected = resolveSelectedImageUrls(withDesc);
     setScraped({
       ...withDesc,
       selected_image_urls: selected,

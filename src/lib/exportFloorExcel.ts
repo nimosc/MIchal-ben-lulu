@@ -57,6 +57,20 @@ interface TemplateStyles {
 }
 
 let _templateCache: TemplateStyles | null = null;
+let _logoBufferCache: ArrayBuffer | null = null;
+const LOGO_SOURCE_WIDTH = 472;
+const LOGO_SOURCE_HEIGHT = 709;
+const LOGO_TOP_ROW = 1;
+const LOGO_ROWS_COUNT = 2;
+
+function excelColWidthToPixels(width?: number): number {
+  const w = width ?? 8.43;
+  return Math.max(8, Math.floor(w * 7 + 5));
+}
+
+function pixelsToPoints(px: number): number {
+  return px * 0.75;
+}
 
 async function loadTemplateStyles(): Promise<TemplateStyles> {
   if (_templateCache) return _templateCache;
@@ -95,6 +109,38 @@ async function loadTemplateStyles(): Promise<TemplateStyles> {
   return _templateCache;
 }
 
+async function addWorksheetLogo(wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet, lastCol: number): Promise<void> {
+  try {
+    if (!_logoBufferCache) {
+      const res = await fetch("/logo.jpg");
+      if (!res.ok) return;
+      _logoBufferCache = await res.arrayBuffer();
+    }
+    const logoId = wb.addImage({
+      buffer: _logoBufferCache,
+      extension: "jpeg",
+    });
+    const lastColZeroBased = lastCol - 1;
+    const lastColWidthPx = excelColWidthToPixels(ws.getColumn(lastCol).width);
+    const logoWidthPx = lastColWidthPx;
+    const logoHeightPx = Math.round((logoWidthPx * LOGO_SOURCE_HEIGHT) / LOGO_SOURCE_WIDTH);
+    const rowHeightPt = pixelsToPoints(logoHeightPx / LOGO_ROWS_COUNT);
+    for (let r = 0; r < LOGO_ROWS_COUNT; r++) {
+      const row = ws.getRow(LOGO_TOP_ROW + r);
+      row.height = Math.max(row.height ?? 0, rowHeightPt);
+    }
+
+    ws.addImage(logoId, {
+      // Keep original aspect ratio, start exactly above the table title/header area.
+      tl: { col: lastColZeroBased, row: LOGO_TOP_ROW - 1 },
+      ext: { width: logoWidthPx, height: logoHeightPx },
+      editAs: "oneCell",
+    });
+  } catch {
+    // Optional enhancement: exporting should continue even if logo load fails.
+  }
+}
+
 // ── Cell value helpers ──────────────────────────────────────────────────────
 
 function bodyText(scraped: ScrapedData | null, fallback: string): string {
@@ -120,6 +166,13 @@ function colLetter(col: number): string {
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[<>:"/\\|?*]/g, "-").trim();
+}
+
+function compareMarkAsc(a: string, b: string): number {
+  return a.trim().localeCompare(b.trim(), "en", {
+    sensitivity: "base",
+    numeric: true,
+  });
 }
 
 function uniqueSheetName(wb: ExcelJS.Workbook, baseName: string): string {
@@ -172,6 +225,7 @@ async function addFloorSheet(
   for (let i = 0; i < TRAIL_COUNT; i++) {
     if (tpl.colWidths.trailing[i]) ws.getColumn(TRAIL_FIRST + i).width = tpl.colWidths.trailing[i]!;
   }
+  await addWorksheetLogo(wb, ws, LAST_COL);
 
   // ── Title row (row 3) ──────────────────────────────────────────────────────
   ws.mergeCells(`${colLetter(META_FIRST)}${TITLE_ROW}:${colLetter(LAST_COL)}${TITLE_ROW}`);
@@ -193,7 +247,7 @@ async function addFloorSheet(
 
   // Set actual meta header values
   const metaHeaders = [
-    "סעיף", "סימון", "תאור הגוף", "גוון גמר", "לגובה תקרה",
+    "סעיף", "סימון", "תאור הגוף", "גוון גמר", "גובה תקרה (מטר)",
     "כדוגמאת", "יצרן",
     "הערות אדריכלית לפני אישור ליועץ תאורה",
     "מיקום ציוד (מרוחק/ אינטגרלי/ מקומי)",
@@ -329,7 +383,9 @@ async function addFloorSheet(
     rowNum++;
   };
 
-  for (const item of floor.items) {
+  const sortedItems = [...floor.items].sort((a, b) => compareMarkAsc(a.mark ?? "", b.mark ?? ""));
+
+  for (const item of sortedItems) {
     writeRow({
       sectionId:      item.section_id,
       mark:           item.mark,
@@ -356,6 +412,49 @@ async function addFloorSheet(
         rooms:          acc.rooms,
       });
     });
+  }
+
+  // Summary row under all products: total "סה"כ לפני מע"מ"
+  if (rowNum > DATA_START) {
+    const summaryRow = ws.getRow(rowNum);
+    if (tpl.rowHeights[DATA_START]) summaryRow.height = tpl.rowHeights[DATA_START];
+    const summaryFill: ExcelJS.Fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFDDEBF7" }, // light blue for clear aggregation separation
+    };
+
+    for (let col = META_FIRST; col <= LAST_COL; col++) {
+      const cell = summaryRow.getCell(col);
+      cell.fill = summaryFill;
+      const b = JSON.parse(JSON.stringify(cell.border || {}));
+      b.top = { style: "medium", color: { argb: "FF000000" } };
+      cell.border = b;
+    }
+
+    const labelCell = summaryRow.getCell(tPriceCol - 1);
+    labelCell.value = 'סה"כ';
+    applyStyle(labelCell, tpl.data.trailing[T_PRICE]);
+    labelCell.fill = summaryFill;
+    labelCell.font = { ...(labelCell.font || {}), bold: true };
+
+    const totalPriceCell = summaryRow.getCell(tPriceCol);
+    totalPriceCell.value = {
+      formula: `SUM(${colLetter(tPriceCol)}${DATA_START}:${colLetter(tPriceCol)}${rowNum - 1})`,
+    };
+    applyStyle(totalPriceCell, tpl.data.trailing[T_TPRICE]);
+    totalPriceCell.fill = summaryFill;
+    totalPriceCell.font = { ...(totalPriceCell.font || {}), bold: true };
+
+    // Keep sheet frame consistent on the summary row too
+    const fixSummaryBorder = (col: number, side: "left" | "right") => {
+      const cell = summaryRow.getCell(col);
+      const b = JSON.parse(JSON.stringify(cell.border || {}));
+      b[side] = { style: "medium", color: { argb: "FF000000" } };
+      cell.border = b;
+    };
+    fixSummaryBorder(META_FIRST, "left");
+    fixSummaryBorder(LAST_COL, "right");
   }
 }
 

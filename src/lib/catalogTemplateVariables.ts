@@ -7,52 +7,52 @@ export const DEFAULT_MOUNTING_INSTRUCTIONS_LABEL =
 
 /** שמות משתנים בתבנית — בפורמט {{שם_משתנה}} */
 export const CATALOG_TEMPLATE_VAR_NAMES = [
-  "projectName",
-  "floorName",
-  "editionLine",
-  "year",
-  "mark",
-  "productTitle",
-  "manufacturer",
-  "modelManufacturer",
-  "sku",
-  "roomNames",
-  "description",
+  "שם_פרויקט",
+  "שם_קומה",
+  "מהדורה",
+  "שנה",
+  "סימון",
+  "שם_מוצר",
+  "יצרן",
+  "דגם_יצרן",
+  "מקט",
+  "חדרים",
+  "תיאור",
   "cri",
-  "lumens",
-  "colorTemp",
-  "watt",
-  "voltageCurrent",
-  "totalUnits",
-  "unitLabel",
+  "לומן",
+  "טמפרטורת_צבע",
+  "וואט",
+  "מתח_זרם",
+  "כמות_כוללת",
+  "יחידת_מידה",
   "ip",
-  "lightSource",
-  "productUrl",
-  "mountingInstructionsUrl",
-  "mountingInstructionsLabel",
-  "reflector",
-  "lensCover",
-  "beamAngle",
-  "adjustment",
-  "lightDistribution",
-  "lampLife",
-  "efficiency",
-  "glare",
-  "driverLocation",
-  "dimmingMethod",
-  "finishColor",
-  "bodyDiameter",
-  "bodyWidth",
-  "bodyHeight",
-  "rosetteType",
-  "importer",
-  "footerNote1",
-  "footerNote2",
+  "מקור_אור",
+  "קישור_מוצר",
+  "קישור_הוראות_התקנה",
+  "תווית_הוראות_התקנה",
+  "רפלקטור",
+  "עדשה_כיסוי",
+  "זווית_הארה",
+  "כיוונון",
+  "פיזור_אור",
+  "אורך_חיים",
+  "יעילות",
+  "סינוור",
+  "מיקום_ציוד_עזר",
+  "שיטת_שליטה",
+  "צבע_גמר",
+  "קוטר_גוף",
+  "רוחב_גוף",
+  "גובה_גוף",
+  "סוג_רוזטה",
+  "יבואן",
+  "הערה1",
+  "הערה2",
 ] as const;
 
 export type CatalogTemplateVarName = (typeof CATALOG_TEMPLATE_VAR_NAMES)[number];
 
-const PLACEHOLDER_RE = /\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}/g;
+const PLACEHOLDER_RE = /\{\{([a-zA-Zא-ת][a-zA-Z0-9א-ת_]*)\}\}/g;
 
 /** תווים לא חוקיים ב-XML 1.0 — PowerPoint מסרב לפתוח את הקובץ */
 export function sanitizeXmlString(value: string): string {
@@ -78,54 +78,55 @@ function buildModelManufacturerLine(ctx: CatalogSlideContext): string {
 
 export function buildCoverTemplateVars(ctx: CoverSlideContext): Record<string, string> {
   return {
-    projectName: ctx.projectName,
-    floorName: ctx.floorName,
-    editionLine: ctx.editionLine,
-    year: ctx.year,
+    שם_פרויקט: ctx.projectName,
+    שם_קומה: ctx.floorName,
+    מהדורה: ctx.editionLine,
+    שנה: ctx.year,
   };
 }
 
 export function buildCatalogTemplateVars(ctx: CatalogSlideContext): Record<string, string> {
   const manufacturer = ctx.manufacturerSuffix.replace(/^_/, "").trim();
   return {
-    projectName: ctx.projectName,
-    mark: ctx.mark,
-    productTitle: ctx.productTitle,
-    manufacturer,
-    modelManufacturer: buildModelManufacturerLine(ctx),
-    sku: ctx.sku,
-    roomNames: ctx.roomNames,
-    description: ctx.description?.trim() || "",
+    שם_פרויקט: ctx.projectName,
+    שם_קומה: ctx.floorName || "",
+    סימון: ctx.mark,
+    שם_מוצר: ctx.productTitle,
+    יצרן: manufacturer,
+    דגם_יצרן: buildModelManufacturerLine(ctx),
+    מקט: ctx.sku,
+    חדרים: ctx.roomNames,
+    תיאור: ctx.description?.trim() || "",
     cri: ctx.cri || "",
-    lumens: ctx.lumens || "",
-    colorTemp: ctx.colorTemp || "",
-    watt: ctx.watt || "",
-    voltageCurrent: ctx.voltageCurrent || "",
-    totalUnits: ctx.totalUnits ? String(ctx.totalUnits) : "",
-    unitLabel: ctx.unitLabel || "",
+    לומן: ctx.lumens || "",
+    טמפרטורת_צבע: ctx.colorTemp || "",
+    וואט: ctx.watt || "",
+    מתח_זרם: ctx.voltageCurrent || "",
+    כמות_כוללת: ctx.totalUnits ? String(ctx.totalUnits) : "",
+    יחידת_מידה: ctx.unitLabel || "",
     ip: ctx.ip || "",
-    lightSource: ctx.lightSource?.trim() || "",
-    productUrl: ctx.productUrl?.trim() || "",
-    mountingInstructionsUrl: ctx.mountingUrl?.trim() || "",
-    mountingInstructionsLabel: DEFAULT_MOUNTING_INSTRUCTIONS_LABEL,
-    reflector: ctx.reflector || "",
-    lensCover: ctx.lensCover || "",
-    beamAngle: ctx.beamAngle || "",
-    adjustment: ctx.adjustment || "",
-    lightDistribution: ctx.lightDistribution || "",
-    lampLife: ctx.lampLife || "",
-    efficiency: ctx.efficiency || "",
-    glare: ctx.glare || "",
-    driverLocation: ctx.driverLocation || "",
-    dimmingMethod: ctx.dimmingMethod || "",
-    finishColor: ctx.finishColor || "",
-    bodyDiameter: ctx.bodyDiameter || "",
-    bodyWidth: ctx.bodyWidth || "",
-    bodyHeight: ctx.bodyHeight || "",
-    rosetteType: ctx.rosetteType || "",
-    importer: ctx.importer || "",
-    footerNote1: CATALOG_FOOTER_NOTES[0] ?? "",
-    footerNote2: CATALOG_FOOTER_NOTES[1] ?? "",
+    מקור_אור: ctx.lightSource?.trim() || "",
+    קישור_מוצר: ctx.productUrl?.trim() || "",
+    קישור_הוראות_התקנה: ctx.mountingUrl?.trim() || "",
+    תווית_הוראות_התקנה: DEFAULT_MOUNTING_INSTRUCTIONS_LABEL,
+    רפלקטור: ctx.reflector || "",
+    עדשה_כיסוי: ctx.lensCover || "",
+    זווית_הארה: ctx.beamAngle || "",
+    כיוונון: ctx.adjustment || "",
+    פיזור_אור: ctx.lightDistribution || "",
+    אורך_חיים: ctx.lampLife || "",
+    יעילות: ctx.efficiency || "",
+    סינוור: ctx.glare || "",
+    מיקום_ציוד_עזר: ctx.driverLocation || "",
+    שיטת_שליטה: ctx.dimmingMethod || "",
+    צבע_גמר: ctx.finishColor || "",
+    קוטר_גוף: ctx.bodyDiameter || "",
+    רוחב_גוף: ctx.bodyWidth || "",
+    גובה_גוף: ctx.bodyHeight || "",
+    סוג_רוזטה: ctx.rosetteType || "",
+    יבואן: ctx.importer || "",
+    הערה1: CATALOG_FOOTER_NOTES[0] ?? "",
+    הערה2: CATALOG_FOOTER_NOTES[1] ?? "",
   };
 }
 
@@ -166,7 +167,7 @@ export function applyTemplateVariables(
 }
 
 export function readProductUrlFromSlide(xml: string): string {
-  const m = xml.match(/<a:t>\{\{productUrl\}\}<\/a:t>/);
+  const m = xml.match(/<a:t>\{\{קישור_מוצר\}\}<\/a:t>/);
   if (m) return "";
   const url = xml.match(/<a:t>(https?:\/\/[^<]+)<\/a:t>/);
   return url?.[1] ?? "";
@@ -175,10 +176,10 @@ export function readProductUrlFromSlide(xml: string): string {
 /** מוסיף hyperlink (rId6) לריצת טקסט של הוראות התקנה — אחרי מילוי {{משתנים}} */
 export function patchMountingInstructionsLink(
   xml: string,
-  mountingUrl: string,
+  mountingUrl: string | undefined,
   label: string = DEFAULT_MOUNTING_INSTRUCTIONS_LABEL
 ): string {
-  const url = mountingUrl.trim();
+  const url = (mountingUrl ?? "").trim();
   if (!url) return xml;
 
   const labelTexts = [
@@ -224,6 +225,88 @@ export function patchMountingInstructionsLink(
   }
 
   return xml.slice(0, runStart) + run + xml.slice(runEnd);
+}
+
+type LinkShapePatchOpts = {
+  relId: string;
+  url?: string;
+  markers: string[];
+};
+
+function normalizeMarker(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[\{\}\s"'`]/g, "")
+    .replace(/_/g, "");
+}
+
+function patchShapeHyperlink(cNvPrTag: string, relId: string, url: string): string {
+  const tooltip = escapeXmlAttr(url);
+  const hlink = `<a:hlinkClick r:id="${relId}" tooltip="${tooltip}"/>`;
+
+  if (cNvPrTag.endsWith("/>")) {
+    return cNvPrTag.replace("/>", `>${hlink}</p:cNvPr>`);
+  }
+
+  if (cNvPrTag.includes("<a:hlinkClick")) {
+    return cNvPrTag
+      .replace(/<a:hlinkClick\b[^>]*>/, `<a:hlinkClick r:id="${relId}" tooltip="${tooltip}">`)
+      .replace(/<a:hlinkClick\b([^>]*)\/>/, `<a:hlinkClick r:id="${relId}" tooltip="${tooltip}"/>`);
+  }
+
+  return cNvPrTag.replace("</p:cNvPr>", `${hlink}</p:cNvPr>`);
+}
+
+/**
+ * מזהה צורה לפי alt text (descr/name/title) ומחיל קישור ברמת shape.
+ * אם אין URL — הצורה נמחקת מהשקופית.
+ */
+export function patchLinkShapeByAltText(
+  xml: string,
+  opts: LinkShapePatchOpts
+): string {
+  const normalizedMarkers = opts.markers.map(normalizeMarker).filter(Boolean);
+  if (!normalizedMarkers.length) return xml;
+  const url = (opts.url ?? "").trim();
+
+  const tags = ["sp", "pic", "graphicFrame", "cxnSp", "grpSp"];
+  const ranges: Array<{ start: number; end: number; replacement: string }> = [];
+
+  for (const tag of tags) {
+    const re = new RegExp(`<p:${tag}\\b[\\s\\S]*?<\\/p:${tag}>`, "g");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(xml))) {
+      const block = m[0];
+      const cNvPr = block.match(/<p:cNvPr\b[\s\S]*?(?:\/>|<\/p:cNvPr>)/);
+      if (!cNvPr) continue;
+
+      const attrs = cNvPr[0].match(/<(?:p:)?cNvPr\b([^>]*)>/)?.[1] ?? "";
+      const desc = attrs.match(/\bdescr="([^"]*)"/)?.[1] ?? "";
+      const name = attrs.match(/\bname="([^"]*)"/)?.[1] ?? "";
+      const title = attrs.match(/\btitle="([^"]*)"/)?.[1] ?? "";
+      const hay = normalizeMarker(`${desc} ${name} ${title}`);
+
+      if (!normalizedMarkers.some((marker) => hay.includes(marker))) continue;
+
+      if (!url) {
+        ranges.push({ start: m.index, end: m.index + block.length, replacement: "" });
+        continue;
+      }
+
+      const patchedCNvPr = patchShapeHyperlink(cNvPr[0], opts.relId, url);
+      const replacement = block.replace(cNvPr[0], patchedCNvPr);
+      ranges.push({ start: m.index, end: m.index + block.length, replacement });
+    }
+  }
+
+  if (!ranges.length) return xml;
+
+  ranges.sort((a, b) => b.start - a.start);
+  let out = xml;
+  for (const r of ranges) {
+    out = out.slice(0, r.start) + r.replacement + out.slice(r.end);
+  }
+  return out;
 }
 
 function escapeXmlAttr(value: string): string {

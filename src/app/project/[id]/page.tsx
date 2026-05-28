@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/store/useStore";
 import { calcFloorTotals, calcProjectTotals } from "@/lib/project";
 import { exportProjectToExcel } from "@/lib/exportFloorExcel";
+import { exportProjectToPresentation } from "@/lib/exportProjectPresentation";
 import { Input } from "@/components/ui/input";
 import {
   ChevronRight,
@@ -39,6 +40,7 @@ export default function ProjectFloorsPage() {
   const [newFloorName, setNewFloorName] = useState("");
   const [adding, setAdding] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingPpt, setExportingPpt] = useState(false);
   const [deleteFloorTarget, setDeleteFloorTarget] = useState<{ id: string; name: string } | null>(null);
   const [lastFloorAlert, setLastFloorAlert] = useState(false);
   const [renameFloorTarget, setRenameFloorTarget] = useState<string | null>(null);
@@ -62,6 +64,22 @@ export default function ProjectFloorsPage() {
       alert("שגיאה בייצוא לאקסל");
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleExportPresentation = async () => {
+    if (totals.itemCount === 0) {
+      alert("אין גופי תאורה לייצוא");
+      return;
+    }
+    setExportingPpt(true);
+    try {
+      await exportProjectToPresentation(project);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "שגיאה בייצוא מצגת";
+      alert(msg);
+    } finally {
+      setExportingPpt(false);
     }
   };
 
@@ -118,11 +136,19 @@ export default function ProjectFloorsPage() {
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={handleExportExcel}
-                disabled={exporting}
+                disabled={exporting || exportingPpt}
                 className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground border border-border rounded-lg px-3 py-2 hover:bg-secondary hover:text-foreground disabled:opacity-60 transition-colors"
               >
                 <FileDown className="w-4 h-4" />
                 {exporting ? "מייצא..." : "ייצוא לאקסל"}
+              </button>
+              <button
+                onClick={handleExportPresentation}
+                disabled={exporting || exportingPpt || totals.itemCount === 0}
+                className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground border border-border rounded-lg px-3 py-2 hover:bg-secondary hover:text-foreground disabled:opacity-60 transition-colors"
+              >
+                <FileDown className="w-4 h-4" />
+                {exportingPpt ? "מייצא מצגת..." : "ייצוא מצגת"}
               </button>
               <button
                 onClick={() => router.push(`/project/${projectId}/setup`)}
