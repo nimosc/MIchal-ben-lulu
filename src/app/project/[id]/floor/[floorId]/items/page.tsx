@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/store/useStore";
 import { calcFloorTotals, calcItemTotals, getFloor } from "@/lib/project";
 import { exportFloorToExcel } from "@/lib/exportFloorExcel";
-import { exportFloorToPresentation } from "@/lib/exportFloorPresentation";
+import { CatalogPresentationPreviewDialog } from "@/components/CatalogPresentationPreviewDialog";
+import type { CatalogPresentationPreviewState } from "@/lib/catalogPresentationPreview";
+import { prepareFloorPresentation } from "@/lib/exportFloorPresentation";
 import { Progress } from "@/components/ui/progress";
 import {
   ChevronRight,
@@ -41,6 +43,8 @@ export default function FloorItemsPage() {
 
   const [exporting, setExporting] = useState(false);
   const [exportingPpt, setExportingPpt] = useState(false);
+  const [pptPreviewOpen, setPptPreviewOpen] = useState(false);
+  const [pptPreview, setPptPreview] = useState<CatalogPresentationPreviewState | null>(null);
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState(0);
   const [sendStatus, setSendStatus] = useState("");
@@ -116,10 +120,14 @@ export default function FloorItemsPage() {
       alert("אין גופי תאורה לייצוא");
       return;
     }
+    setPptPreviewOpen(true);
+    setPptPreview(null);
     setExportingPpt(true);
     try {
-      await exportFloorToPresentation(project, floor);
+      const result = await prepareFloorPresentation(project, floor);
+      setPptPreview(result);
     } catch (e) {
+      setPptPreviewOpen(false);
       const msg = e instanceof Error ? e.message : "שגיאה בייצוא מצגת";
       alert(msg);
     } finally {
@@ -564,6 +572,13 @@ export default function FloorItemsPage() {
           </div>
         )}
       </div>
+
+      <CatalogPresentationPreviewDialog
+        open={pptPreviewOpen}
+        onOpenChange={setPptPreviewOpen}
+        loading={exportingPpt}
+        preview={pptPreview}
+      />
 
       <Dialog open={pendingDelete !== null} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
         <DialogContent dir="rtl" className="max-w-sm">

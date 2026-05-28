@@ -5,6 +5,8 @@ import {
   buildCoverSlideContext,
   buildItemSlideContext,
 } from "@/lib/catalogSlideFill";
+import { buildPresentationPreviewSlides } from "@/lib/catalogPresentationPreview";
+import type { CatalogPresentationPreviewState } from "@/lib/catalogPresentationPreview";
 import { planCatalogSlides } from "@/lib/catalogTemplateTypes";
 import {
   buildCatalogPresentationBlob,
@@ -41,18 +43,27 @@ function collectCatalogSlides(project: Project, floor: Floor): CatalogOutputSlid
   return slides;
 }
 
-export async function exportFloorToPresentation(
+export async function prepareFloorPresentation(
   project: Project,
   floor: Floor
-): Promise<void> {
+): Promise<CatalogPresentationPreviewState> {
   const coverCtx = buildCoverSlideContext(project, floor);
   const catalogSlides = collectCatalogSlides(project, floor);
   const { blob, imageWarnings } = await buildCatalogPresentationBlob({ coverCtx, catalogSlides });
   const filename = `${sanitizeFilename(project.name)}-${sanitizeFilename(floor.name)}-קטלוג.pptx`;
-  triggerPresentationDownload(blob, filename);
-  if (imageWarnings.length > 0) {
+  const slides = buildPresentationPreviewSlides(coverCtx, catalogSlides);
+  return { blob, filename, slides, imageWarnings };
+}
+
+export async function exportFloorToPresentation(
+  project: Project,
+  floor: Floor
+): Promise<void> {
+  const result = await prepareFloorPresentation(project, floor);
+  triggerPresentationDownload(result.blob, result.filename);
+  if (result.imageWarnings.length > 0) {
     toast.warning(
-      `${imageWarnings.length} תמונות לא נטענו — ייתכן מסגרת ריקה במצגת. בדוק את הקישורים בפריט.`
+      `${result.imageWarnings.length} תמונות לא נטענו — ייתכן מסגרת ריקה במצגת. בדוק את הקישורים בפריט.`
     );
   }
 }

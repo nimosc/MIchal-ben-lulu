@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { useStore } from "@/store/useStore";
 import { calcFloorTotals, calcProjectTotals } from "@/lib/project";
 import { exportProjectToExcel } from "@/lib/exportFloorExcel";
-import { exportProjectToPresentation } from "@/lib/exportProjectPresentation";
+import { CatalogPresentationPreviewDialog } from "@/components/CatalogPresentationPreviewDialog";
+import type { CatalogPresentationPreviewState } from "@/lib/catalogPresentationPreview";
+import { prepareProjectPresentation } from "@/lib/exportProjectPresentation";
 import { Input } from "@/components/ui/input";
 import {
   ChevronRight,
@@ -41,6 +43,8 @@ export default function ProjectFloorsPage() {
   const [adding, setAdding] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportingPpt, setExportingPpt] = useState(false);
+  const [pptPreviewOpen, setPptPreviewOpen] = useState(false);
+  const [pptPreview, setPptPreview] = useState<CatalogPresentationPreviewState | null>(null);
   const [deleteFloorTarget, setDeleteFloorTarget] = useState<{ id: string; name: string } | null>(null);
   const [lastFloorAlert, setLastFloorAlert] = useState(false);
   const [renameFloorTarget, setRenameFloorTarget] = useState<string | null>(null);
@@ -72,10 +76,14 @@ export default function ProjectFloorsPage() {
       alert("אין גופי תאורה לייצוא");
       return;
     }
+    setPptPreviewOpen(true);
+    setPptPreview(null);
     setExportingPpt(true);
     try {
-      await exportProjectToPresentation(project);
+      const result = await prepareProjectPresentation(project);
+      setPptPreview(result);
     } catch (e) {
+      setPptPreviewOpen(false);
       const msg = e instanceof Error ? e.message : "שגיאה בייצוא מצגת";
       alert(msg);
     } finally {
@@ -406,6 +414,13 @@ export default function ProjectFloorsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CatalogPresentationPreviewDialog
+        open={pptPreviewOpen}
+        onOpenChange={setPptPreviewOpen}
+        loading={exportingPpt}
+        preview={pptPreview}
+      />
 
       {/* Last floor alert */}
       <Dialog open={lastFloorAlert} onOpenChange={setLastFloorAlert}>
